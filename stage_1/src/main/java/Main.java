@@ -18,9 +18,7 @@ public class Main {
 
             DataLakeManager.saveBook(
                     bookId,
-                    book,
-                    "20260924",
-                    "10"
+                    book
             );
 
         } catch (Exception e) {
