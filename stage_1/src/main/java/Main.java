@@ -1,8 +1,11 @@
 import datalake.BookDownloader;
 import datalake.BookProcessor;
 import datalake.DataLakeManager;
+import datalake.IndexStorage;
 import datalake.InvertedIndex;
 import datalake.TextProcessor;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 import java.util.List;
 import java.util.Map;
@@ -40,6 +43,22 @@ public class Main {
                     bookId,
                     words
             );
+
+            LocalDateTime now = LocalDateTime.now();
+
+            String date = now.format(
+            DateTimeFormatter.ofPattern("yyyyMMdd")
+        );
+
+            String hour = now.format(
+            DateTimeFormatter.ofPattern("HH")
+        );
+
+            IndexStorage.save(
+                index,
+                date,
+                hour
+        );
 
             System.out.println(
                     "Número de palabras diferentes: "
