@@ -4,25 +4,21 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 
 public class DataLakeManager {
 
-    public static void saveBook(int bookId, String book) throws IOException {
+    public static Path saveBook(
+            int bookId,
+            String book,
+            String date,
+            String hour
+    ) throws IOException {
 
-        String header = BookProcessor.extractHeader(book);
-        String body = BookProcessor.extractBody(book);
+        String header =
+                BookProcessor.extractHeader(book);
 
-        LocalDateTime now = LocalDateTime.now();
-
-        String date = now.format(
-                DateTimeFormatter.ofPattern("yyyyMMdd")
-        );
-
-        String hour = now.format(
-                DateTimeFormatter.ofPattern("HH")
-        );
+        String body =
+                BookProcessor.extractBody(book);
 
         Path directory = Paths.get(
                 "datalake",
@@ -32,20 +28,42 @@ public class DataLakeManager {
 
         Files.createDirectories(directory);
 
-        Path headerFile = directory.resolve(
-                bookId + ".header.txt"
+        Path headerFile =
+                directory.resolve(
+                        bookId + ".header.txt"
+                );
+
+        Path bodyFile =
+                directory.resolve(
+                        bookId + ".body.txt"
+                );
+
+        Files.writeString(
+                headerFile,
+                header
         );
 
-        Path bodyFile = directory.resolve(
-                bookId + ".body.txt"
+        Files.writeString(
+                bodyFile,
+                body
         );
 
-        Files.writeString(headerFile, header);
-        Files.writeString(bodyFile, body);
+        System.out.println(
+                "Datalake creado correctamente."
+        );
 
-        System.out.println("Datalake creado correctamente.");
-        System.out.println("Directorio: " + directory);
-        System.out.println("Header: " + headerFile);
-        System.out.println("Body: " + bodyFile);
+        System.out.println(
+                "Directorio: " + directory
+        );
+
+        System.out.println(
+                "Header: " + headerFile
+        );
+
+        System.out.println(
+                "Body: " + bodyFile
+        );
+
+        return directory;
     }
 }

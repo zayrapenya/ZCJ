@@ -6,37 +6,69 @@ public class BookManager {
 
     public static void processBook(
             int bookId,
-            InvertedIndex index
+            InvertedIndex index,
+            String date,
+            String hour
     ) throws Exception {
 
         System.out.println();
-        System.out.println("Procesando libro: " + bookId);
+        System.out.println(
+                "================================"
+        );
 
+        System.out.println(
+                "Procesando libro: " + bookId
+        );
 
-        String book =
-                BookDownloader.downloadBook(bookId);
-
-        System.out.println("Libro descargado.");
-
-
-        DataLakeManager.saveBook(
-                bookId,
-                book
+        System.out.println(
+                "================================"
         );
 
 
-        String body =
-                BookProcessor.extractBody(book);
+        
 
-  
+        String book =
+                BookDownloader.downloadBook(
+                        bookId
+                );
+
+        System.out.println(
+                "Libro descargado."
+        );
+
+
+        
+
+        DataLakeManager.saveBook(
+                bookId,
+                book,
+                date,
+                hour
+        );
+
+
+        
+
+        String body =
+                BookProcessor.extractBody(
+                        book
+                );
+
+
+        
+
         List<String> words =
-                TextProcessor.tokenize(body);
+                TextProcessor.tokenize(
+                        body
+                );
 
         System.out.println(
                 "Número de palabras: "
                 + words.size()
         );
 
+
+        
 
         index.addDocument(
                 bookId,

@@ -1,6 +1,7 @@
 import datalake.BookManager;
 import datalake.IndexStorage;
 import datalake.InvertedIndex;
+import datalake.SearchEngine;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -13,27 +14,66 @@ public class Main {
 
         try {
 
-            // Libros que vamos a utilizar
+            // ========================================
+            // 1. LIBROS
+            // ========================================
+
             int[] bookIds = {
                     1342,
                     84,
                     1661
             };
 
-            // Índice global
+
+            // ========================================
+            // 2. FECHA Y HORA DE ESTA EJECUCIÓN
+            // ========================================
+
+            LocalDateTime now =
+                    LocalDateTime.now();
+
+            String date =
+                    now.format(
+                            DateTimeFormatter.ofPattern(
+                                    "yyyyMMdd"
+                            )
+                    );
+
+            String hour =
+                    now.format(
+                            DateTimeFormatter.ofPattern(
+                                    "HH"
+                            )
+                    );
+
+
+            // ========================================
+            // 3. CREAR ÍNDICE GLOBAL
+            // ========================================
+
             InvertedIndex index =
                     new InvertedIndex();
 
-            // Procesar todos los libros
+
+            // ========================================
+            // 4. PROCESAR TODOS LOS LIBROS
+            // ========================================
+
             for (int bookId : bookIds) {
 
                 BookManager.processBook(
                         bookId,
-                        index
+                        index,
+                        date,
+                        hour
                 );
             }
 
-            // Mostrar información del índice
+
+            // ========================================
+            // 5. INFORMACIÓN DEL ÍNDICE
+            // ========================================
+
             System.out.println();
             System.out.println(
                     "================================"
@@ -52,114 +92,93 @@ public class Main {
                     + index.size()
             );
 
-            // Obtener fecha y hora
-            LocalDateTime now =
-                    LocalDateTime.now();
 
-            String date =
-                    now.format(
-                            DateTimeFormatter.ofPattern(
-                                    "yyyyMMdd"
-                            )
-                    );
+            // ========================================
+            // 6. GUARDAR ÍNDICE
+            // ========================================
 
-            String hour =
-                    now.format(
-                            DateTimeFormatter.ofPattern(
-                                    "HH"
-                            )
-                    );
-
-            // Guardar índice
             IndexStorage.save(
                     index,
                     date,
                     hour
             );
 
-            // Pruebas de búsqueda
+
+            // ========================================
+            // 7. CREAR BUSCADOR
+            // ========================================
+
+            SearchEngine searchEngine =
+                    new SearchEngine(index);
+
+
+            // ========================================
+            // 8. PRUEBAS DEL BUSCADOR
+            // ========================================
+
             System.out.println();
             System.out.println(
                     "================================"
             );
 
             System.out.println(
-                    "PRUEBAS DE BÚSQUEDA"
+                    "PRUEBAS DEL BUSCADOR"
             );
 
             System.out.println(
                     "================================"
             );
 
-            String[] wordsToSearch = {
-                    "darcy",
-                    "elizabeth",
-                    "love",
-                    "holmes",
-                    "alice"
-            };
 
-            for (String word : wordsToSearch) {
+            // Búsqueda de una palabra
 
-                Map<Integer, List<Integer>> documents =
-                        index.search(word);
-
-                System.out.println(
-                        word + " → " + documents
-                );
-            }
             System.out.println();
-System.out.println(
-        "================================"
-);
+            System.out.println(
+                    "1. Búsqueda de palabra:"
+            );
 
-System.out.println(
-        "BÚSQUEDA AND"
-);
-
-System.out.println(
-        "================================"
-);
-
-Map<Integer, List<Integer>> andResult =
-        index.searchAnd(
-                "darcy",
-                "love"
-        );
-
-System.out.println(
-        "darcy AND love → "
-        + andResult
-);
+            System.out.println(
+                    "darcy → "
+                    + searchEngine.search(
+                            "darcy"
+                    )
+            );
 
 
-System.out.println();
-System.out.println(
-        "================================"
-);
+            // Búsqueda AND
 
-System.out.println(
-        "BÚSQUEDA DE FRASES"
-);
+            System.out.println();
+            System.out.println(
+                    "2. Búsqueda AND:"
+            );
 
-System.out.println(
-        "================================"
-);
+            System.out.println(
+                    "darcy AND love → "
+                    + searchEngine.searchAnd(
+                            "darcy",
+                            "love"
+                    )
+            );
 
-Map<Integer, List<Integer>> phraseResult =
-        index.searchPhrase(
-                "mr darcy"
-        );
 
-System.out.println(
-        "\"mr darcy\" → "
-        + phraseResult
-);
+            // Búsqueda de frase
+
+            System.out.println();
+            System.out.println(
+                    "3. Búsqueda de frase:"
+            );
+
+            System.out.println(
+                    "\"mr darcy\" → "
+                    + searchEngine.searchPhrase(
+                            "mr darcy"
+                    )
+            );
+
 
         } catch (Exception e) {
 
             e.printStackTrace();
-
         }
     }
 }
