@@ -1,8 +1,11 @@
 import datalake.BookDownloader;
+import datalake.BookProcessor;
 import datalake.DataLakeManager;
+import datalake.InvertedIndex;
 import datalake.TextProcessor;
 
 import java.util.List;
+import java.util.Map;
 
 public class Main {
 
@@ -23,19 +26,43 @@ public class Main {
                     book
             );
 
-            String body = datalake.BookProcessor.extractBody(book);
+            String body = BookProcessor.extractBody(book);
 
             List<String> words = TextProcessor.tokenize(body);
 
-            System.out.println("Número de palabras: " + words.size());
+            System.out.println(
+                    "Número de palabras: " + words.size()
+            );
 
-            System.out.println("Primeras 20 palabras:");
+            InvertedIndex index = new InvertedIndex();
 
-            for (int i = 0; i < Math.min(20, words.size()); i++) {
+            index.addDocument(
+                    bookId,
+                    words
+            );
 
-                System.out.println(words.get(i));
+            System.out.println(
+                    "Número de palabras diferentes: "
+                    + index.size()
+            );
 
-            }
+            String[] wordsToSearch = {
+            "darcy",
+            "elizabeth",
+            "marriage",
+            "love",
+            "truth"
+    };
+
+    for (String word : wordsToSearch) {
+
+        Map<Integer, List<Integer>> documents =
+            index.search(word);
+
+        System.out.println(
+            word + " → " + documents
+        );
+}
 
         } catch (Exception e) {
 
