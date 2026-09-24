@@ -108,6 +108,53 @@ public class Main {
                         word + " → " + documents
                 );
             }
+            System.out.println();
+System.out.println(
+        "================================"
+);
+
+System.out.println(
+        "BÚSQUEDA AND"
+);
+
+System.out.println(
+        "================================"
+);
+
+Map<Integer, List<Integer>> andResult =
+        index.searchAnd(
+                "darcy",
+                "love"
+        );
+
+System.out.println(
+        "darcy AND love → "
+        + andResult
+);
+
+
+System.out.println();
+System.out.println(
+        "================================"
+);
+
+System.out.println(
+        "BÚSQUEDA DE FRASES"
+);
+
+System.out.println(
+        "================================"
+);
+
+Map<Integer, List<Integer>> phraseResult =
+        index.searchPhrase(
+                "mr darcy"
+        );
+
+System.out.println(
+        "\"mr darcy\" → "
+        + phraseResult
+);
 
         } catch (Exception e) {
 
