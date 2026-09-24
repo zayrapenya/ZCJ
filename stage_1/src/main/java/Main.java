@@ -1,12 +1,9 @@
-import datalake.BookDownloader;
-import datalake.BookProcessor;
-import datalake.DataLakeManager;
+import datalake.BookManager;
 import datalake.IndexStorage;
 import datalake.InvertedIndex;
-import datalake.TextProcessor;
+
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-
 import java.util.List;
 import java.util.Map;
 
@@ -16,72 +13,101 @@ public class Main {
 
         try {
 
-            int bookId = 1342;
+            // Libros que vamos a utilizar
+            int[] bookIds = {
+                    1342,
+                    84,
+                    1661
+            };
 
-            System.out.println("Descargando libro...");
+            // Índice global
+            InvertedIndex index =
+                    new InvertedIndex();
 
-            String book = BookDownloader.downloadBook(bookId);
+            // Procesar todos los libros
+            for (int bookId : bookIds) {
 
-            System.out.println("Libro descargado.");
+                BookManager.processBook(
+                        bookId,
+                        index
+                );
+            }
 
-            DataLakeManager.saveBook(
-                    bookId,
-                    book
+            // Mostrar información del índice
+            System.out.println();
+            System.out.println(
+                    "================================"
             );
-
-            String body = BookProcessor.extractBody(book);
-
-            List<String> words = TextProcessor.tokenize(body);
 
             System.out.println(
-                    "Número de palabras: " + words.size()
+                    "ÍNDICE GLOBAL"
             );
 
-            InvertedIndex index = new InvertedIndex();
-
-            index.addDocument(
-                    bookId,
-                    words
+            System.out.println(
+                    "================================"
             );
-
-            LocalDateTime now = LocalDateTime.now();
-
-            String date = now.format(
-            DateTimeFormatter.ofPattern("yyyyMMdd")
-        );
-
-            String hour = now.format(
-            DateTimeFormatter.ofPattern("HH")
-        );
-
-            IndexStorage.save(
-                index,
-                date,
-                hour
-        );
 
             System.out.println(
                     "Número de palabras diferentes: "
                     + index.size()
             );
 
+            // Obtener fecha y hora
+            LocalDateTime now =
+                    LocalDateTime.now();
+
+            String date =
+                    now.format(
+                            DateTimeFormatter.ofPattern(
+                                    "yyyyMMdd"
+                            )
+                    );
+
+            String hour =
+                    now.format(
+                            DateTimeFormatter.ofPattern(
+                                    "HH"
+                            )
+                    );
+
+            // Guardar índice
+            IndexStorage.save(
+                    index,
+                    date,
+                    hour
+            );
+
+            // Pruebas de búsqueda
+            System.out.println();
+            System.out.println(
+                    "================================"
+            );
+
+            System.out.println(
+                    "PRUEBAS DE BÚSQUEDA"
+            );
+
+            System.out.println(
+                    "================================"
+            );
+
             String[] wordsToSearch = {
-            "darcy",
-            "elizabeth",
-            "marriage",
-            "love",
-            "truth"
-    };
+                    "darcy",
+                    "elizabeth",
+                    "love",
+                    "holmes",
+                    "alice"
+            };
 
-    for (String word : wordsToSearch) {
+            for (String word : wordsToSearch) {
 
-        Map<Integer, List<Integer>> documents =
-            index.search(word);
+                Map<Integer, List<Integer>> documents =
+                        index.search(word);
 
-        System.out.println(
-            word + " → " + documents
-        );
-}
+                System.out.println(
+                        word + " → " + documents
+                );
+            }
 
         } catch (Exception e) {
 
