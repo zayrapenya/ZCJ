@@ -7,7 +7,9 @@ different languages (Python, Java, ...) can be merged and compared:
 """
 
 import csv
+import os
 import shutil
+import tempfile
 import time
 from pathlib import Path
 
@@ -15,7 +17,9 @@ from search_engine.config import BASE_DIR, SAMPLE_DIR
 from search_engine.downloader import split_book
 
 RESULTS_DIR = BASE_DIR / "benchmarks" / "results"
-WORKSPACE = BASE_DIR / "bench_workspace"
+# Scratch data is written to the system temp folder by default so that synced folders
+# (OneDrive, Dropbox...) do not interfere with the measurements. Override with BENCH_WORKSPACE.
+WORKSPACE = Path(os.environ.get("BENCH_WORKSPACE", Path(tempfile.gettempdir()) / "stage1_bench_python"))
 FIRST_SYNTHETIC_ID = 100000
 
 

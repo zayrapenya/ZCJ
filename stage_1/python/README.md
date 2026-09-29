@@ -120,11 +120,19 @@ reach the requested size), so they need no internet connection. Results are writ
 `benchmarks/results/python_<benchmark>.csv` with the columns
 `language,benchmark,structure,n_books,metric,value`, shared with the other languages.
 
+Run each command separately (the index benchmark takes several minutes because
+the hierarchical structure writes thousands of small files):
+
 ```bash
+python -m benchmarks.bench_metadata --books 100 1000 10000
 python -m benchmarks.bench_datalake --books 50 100 200
 python -m benchmarks.bench_index    --books 5 10 20
-python -m benchmarks.bench_metadata --books 100 1000 10000
 ```
+
+Temporary benchmark data is written to the system temp folder
+(`%TEMP%\stage1_bench_python` on Windows), outside synced folders such as OneDrive
+that would distort the timings. Set the `BENCH_WORKSPACE` environment variable to
+use another folder.
 
 | Benchmark | Structures | Metrics |
 |-----------|-----------|---------|
