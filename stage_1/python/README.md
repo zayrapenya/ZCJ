@@ -35,14 +35,43 @@ Generated at runtime (ignored by git): `datalake/`, `datamarts/`, `control/`,
 
 ## Setup
 
-Requires Python 3.10+.
+Requires Python 3.10+. The only dependency is `requests`. Run every command
+**one by one** from the `stage_1/python` folder:
 
 ```bash
 cd stage_1/python
-python -m venv .venv
-.venv\Scripts\activate          # Windows  (Linux/macOS: source .venv/bin/activate)
 pip install -r requirements.txt
 ```
+
+### Optional: virtual environment
+
+Create and activate it **before** installing the requirements:
+
+```bash
+python -m venv .venv
+```
+
+Activate it:
+
+| Shell | Command |
+|-------|---------|
+| Windows PowerShell | `.venv\Scripts\Activate.ps1` |
+| Windows cmd | `.venv\Scripts\activate.bat` |
+| Linux / macOS | `source .venv/bin/activate` |
+
+Then run `pip install -r requirements.txt`.
+
+If PowerShell says that running scripts is disabled, run this once and try again:
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+
+### Quick check
+
+```bash
+python main.py sample
+python main.py search "mr darcy" --phrase
+```
+
+The last command should list *Pride and Prejudice* with 277 hits.
 
 MongoDB is optional. To include it: `pip install pymongo`, start a server on
 `mongodb://localhost:27017` (or set `MONGO_URI`) and use `--index mongo`.
