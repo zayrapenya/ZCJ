@@ -1,0 +1,9 @@
+# Generated at runtime
+datalake/
+datamarts/
+control/
+benchmarks/results/
+bench_workspace/
+__pycache__/
+*.pyc
+.venv/
