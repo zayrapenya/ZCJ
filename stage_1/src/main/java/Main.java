@@ -1,46 +1,59 @@
-import datalake.BookDownloader;
-import datalake.BookProcessor;
+import datalake.*;
+
+import java.nio.file.Path;
 
 public class Main {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
 
-        try {
+        int id = 1342;
 
-            int bookId = 1342;
+        String header = "HEADER DE PRUEBA";
+        String body = "This is the body of the book.";
 
-            System.out.println("Descargando libro " + bookId + "...");
+        Path root = Path.of("datalake");
 
-            String book = BookDownloader.downloadBook(bookId);
+        Datalake dateTime =
+                new DateTimeDatalake(root);
 
-            System.out.println("Libro descargado.");
-            System.out.println();
+        Datalake books =
+                new BookDatalake(root);
 
-            String header = BookProcessor.extractHeader(book);
-            String body = BookProcessor.extractBody(book);
+        Datalake ranges =
+                new RangeDatalake(root);
 
-            System.out.println("HEADER:");
-            System.out.println("-------------------------");
-            System.out.println(header.substring(
-                    0,
-                    Math.min(1000, header.length())
-            ));
+        dateTime.save(id, header, body);
+        books.save(id, header, body);
+        ranges.save(id, header, body);
 
-            System.out.println();
-            System.out.println("BODY:");
-            System.out.println("-------------------------");
-            System.out.println(body.substring(
-                    0,
-                    Math.min(1000, body.length())
-            ));
+        System.out.println(
+                "DateTime: "
+                + dateTime.locate(id).getBody()
+        );
 
-            System.out.println();
-            System.out.println("Longitud del body: " + body.length());
+        System.out.println(
+                "Book: "
+                + books.locate(id).getBody()
+        );
 
-        } catch (Exception e) {
+        System.out.println(
+                "Range: "
+                + ranges.locate(id).getBody()
+        );
 
-            e.printStackTrace();
+        System.out.println(
+                "DateTime IDs: "
+                + dateTime.bookIds()
+        );
 
-        }
+        System.out.println(
+                "Book IDs: "
+                + books.bookIds()
+        );
+
+        System.out.println(
+                "Range IDs: "
+                + ranges.bookIds()
+        );
     }
 }
