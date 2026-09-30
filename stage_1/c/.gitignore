@@ -1,9 +1,6 @@
-# Compilados
 build/
 *.o
 *.exe
-
-# Generado al ejecutar
 datalake/
 datamarts/
 control/
