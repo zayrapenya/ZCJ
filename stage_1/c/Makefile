@@ -1,5 +1,5 @@
 CC      = gcc
-CFLAGS  = -std=c11 -O2 -Wall -Wextra -Isrc
+CFLAGS  = -std=c11 -O2 -Wall -Wextra -Wno-format-truncation -Isrc
 LDLIBS  =
 
 SRC     = $(wildcard src/*.c)

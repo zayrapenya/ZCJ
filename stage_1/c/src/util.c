@@ -8,15 +8,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <dirent.h>
 #include <sys/stat.h>
 
 #ifdef _WIN32
 #include <direct.h>
 #include <windows.h>
 #define MKDIR(p) _mkdir(p)
+#define RMDIR(p) _rmdir(p)
 #else
 #include <time.h>
+#include <unistd.h>
 #define MKDIR(p) mkdir(p, 0755)
+#define RMDIR(p) rmdir(p)
 #endif
 
 /* Files are always opened in binary mode so Windows does not convert
@@ -91,4 +95,44 @@ double now_seconds(void) {
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return ts.tv_sec + ts.tv_nsec / 1e9;
 #endif
+}
+
+int walk_dir(const char *root, walk_fn visit, void *ctx) {
+    DIR *dir = opendir(root);
+    if (!dir) return 0;
+
+    struct dirent *entry;
+    int result = 0;
+    while (result == 0 && (entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+
+        char path[1024];
+        snprintf(path, sizeof(path), "%s/%s", root, entry->d_name);
+        struct stat st;
+        if (stat(path, &st) != 0) continue;
+
+        int is_dir = S_ISDIR(st.st_mode);
+        result = visit(path, entry->d_name, is_dir, (long long)st.st_size, ctx);
+        if (result == 0 && is_dir) result = walk_dir(path, visit, ctx);
+    }
+    closedir(dir);
+    return result;
+}
+
+int remove_tree(const char *path) {
+    struct stat st;
+    if (stat(path, &st) != 0) return 0;
+    if (!S_ISDIR(st.st_mode)) return remove(path);
+
+    DIR *dir = opendir(path);
+    if (!dir) return -1;
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        char child[1024];
+        snprintf(child, sizeof(child), "%s/%s", path, entry->d_name);
+        remove_tree(child);
+    }
+    closedir(dir);
+    return RMDIR(path);
 }
