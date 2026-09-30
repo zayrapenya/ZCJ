@@ -1,6 +1,9 @@
 package index;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -9,14 +12,20 @@ public class Tokenizer {
     private static final Pattern WORD =
             Pattern.compile("[\\p{L}\\p{N}]+");
 
+    private Tokenizer() {
+    }
+
     public static Map<String, List<Integer>> tokenize(
-            String text) {
+            String text
+    ) {
 
         Map<String, List<Integer>> result =
                 new HashMap<>();
 
         Matcher matcher =
-                WORD.matcher(text.toLowerCase());
+                WORD.matcher(
+                        text.toLowerCase()
+                );
 
         int position = 0;
 
@@ -25,10 +34,12 @@ public class Tokenizer {
             String word =
                     matcher.group();
 
-            result.computeIfAbsent(
-                    word,
-                    k -> new ArrayList<>()
-            ).add(position);
+            result
+                    .computeIfAbsent(
+                            word,
+                            k -> new ArrayList<>()
+                    )
+                    .add(position);
 
             position++;
         }

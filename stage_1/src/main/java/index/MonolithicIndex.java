@@ -4,119 +4,186 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 
-import java.nio.file.*;
-import java.util.*;
+import java.io.IOException;
+import java.lang.reflect.Type;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
-public class MonolithicIndex
-        implements IndexStore {
+public class MonolithicIndex implements IndexStore {
 
     private final Path file;
-
-    private final Map<String,
-            Map<Integer, List<Integer>>> index =
-            new HashMap<>();
 
     private final Gson gson =
             new GsonBuilder().setPrettyPrinting().create();
 
-    public MonolithicIndex(Path file)
-            throws Exception {
+    private final Map<String, Map<Integer, List<Integer>>> index =
+            new HashMap<>();
 
-        this.file = file;
+    public MonolithicIndex(Path root)
+            throws IOException {
 
-        if (Files.exists(file)) {
+        Files.createDirectories(root);
 
-            String json =
-                    Files.readString(file);
+        file =
+                root.resolve(
+                        "inverted_index.json"
+                );
 
-            Map<String,
-                    Map<String, List<Double>>> raw =
-                    gson.fromJson(
-                        json,
-                        new TypeToken<
-                            Map<String,
-                            Map<String, List<Double>>>
-                        >() {}.getType()
-                    );
+        load();
+    }
 
-            if (raw != null) {
+    private void load()
+            throws IOException {
 
-                for (var termEntry :
-                        raw.entrySet()) {
+        if (!Files.exists(file)
+                || Files.size(file) == 0) {
+            return;
+        }
 
-                    Map<Integer, List<Integer>> postings =
-                            new HashMap<>();
+        String json =
+                Files.readString(file);
 
-                    for (var bookEntry :
-                            termEntry.getValue().entrySet()) {
+        Type type =
+                new TypeToken<
+                        Map<String,
+                                Map<String,
+                                        List<Integer>>>
+                        >() {
+                        }.getType();
 
-                        List<Integer> positions =
-                                new ArrayList<>();
+        Map<String, Map<String, List<Integer>>> raw =
+                gson.fromJson(json, type);
 
-                        for (Double value :
-                                bookEntry.getValue()) {
+        if (raw == null) {
+            return;
+        }
 
-                            positions.add(
-                                    value.intValue()
-                            );
-                        }
+        for (
+                Map.Entry<String, Map<String, List<Integer>>> entry
+                        : raw.entrySet()
+        ) {
 
-                        postings.put(
-                                Integer.parseInt(
-                                        bookEntry.getKey()
-                                ),
-                                positions
-                        );
-                    }
+            Map<Integer, List<Integer>> postings =
+                    new HashMap<>();
 
-                    index.put(
-                            termEntry.getKey(),
-                            postings
-                    );
-                }
+            for (
+                    Map.Entry<String, List<Integer>> doc
+                            : entry.getValue().entrySet()
+            ) {
+
+                postings.put(
+                        Integer.parseInt(doc.getKey()),
+                        new ArrayList<>(doc.getValue())
+                );
             }
+
+            index.put(
+                    entry.getKey(),
+                    postings
+            );
         }
     }
 
     @Override
     public void addBook(
             int bookId,
-            Map<String, List<Integer>> tokens) {
+            Map<String, List<Integer>> tokens
+    ) {
 
-        for (var entry :
-                tokens.entrySet()) {
+        for (
+                Map.Entry<String, List<Integer>> entry
+                        : tokens.entrySet()
+        ) {
 
-            index.computeIfAbsent(
-                    entry.getKey(),
-                    k -> new HashMap<>()
-            ).put(
-                    bookId,
-                    entry.getValue()
-            );
+            index
+                    .computeIfAbsent(
+                            entry.getKey(),
+                            k -> new HashMap<>()
+                    )
+                    .put(
+                            bookId,
+                            new ArrayList<>(entry.getValue())
+                    );
         }
     }
 
     @Override
     public void flush()
-            throws Exception {
+            throws IOException {
 
-        Files.createDirectories(
-                file.getParent()
-        );
+        Map<String, Map<String, List<Integer>>> output =
+                new HashMap<>();
+
+        for (
+                Map.Entry<String, Map<Integer, List<Integer>>> entry
+                        : index.entrySet()
+        ) {
+
+            Map<String, List<Integer>> docs =
+                    new HashMap<>();
+
+            for (
+                    Map.Entry<Integer, List<Integer>> doc
+                            : entry.getValue().entrySet()
+            ) {
+
+                docs.put(
+                        String.valueOf(doc.getKey()),
+                        doc.getValue()
+                );
+            }
+
+            output.put(
+                    entry.getKey(),
+                    docs
+            );
+        }
 
         Files.writeString(
                 file,
-                gson.toJson(index)
+                gson.toJson(output)
         );
     }
 
     @Override
     public Map<Integer, List<Integer>> lookup(
-            String term) {
+            String term
+    ) {
 
-        return index.getOrDefault(
-                term.toLowerCase(),
-                Collections.emptyMap()
-        );
+        Map<Integer, List<Integer>> result =
+                index.get(
+                        term.toLowerCase()
+                );
+
+        if (result == null) {
+            return Collections.emptyMap();
+        }
+
+        return result;
+    }
+
+    @Override
+    public void close() {
+    }
+
+    @Override
+    public long diskFiles()
+            throws IOException {
+
+        return Files.exists(file) ? 1 : 0;
+    }
+
+    @Override
+    public long diskBytes()
+            throws IOException {
+
+        return Files.exists(file)
+                ? Files.size(file)
+                : 0;
     }
 }

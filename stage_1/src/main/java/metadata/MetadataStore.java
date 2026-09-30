@@ -34,25 +34,35 @@ public class MetadataStore {
                     Pattern.MULTILINE
             );
 
-    public MetadataStore(String databasePath) throws Exception {
-    Path database = Path.of(databasePath);
+    public MetadataStore(
+            String databasePath
+    ) throws Exception {
+
+        Path database =
+                Path.of(databasePath);
 
         if (database.getParent() != null) {
-        Files.createDirectories(database.getParent());
+            Files.createDirectories(
+                    database.getParent()
+            );
         }
 
-        this.url = "jdbc:sqlite:" + databasePath;
-        initialize();
-}
+        this.url =
+                "jdbc:sqlite:" + databasePath;
 
+        initialize();
+    }
 
     private void initialize()
             throws SQLException {
 
-        try (Connection connection =
-                     DriverManager.getConnection(url);
-             Statement statement =
-                     connection.createStatement()) {
+        try (
+                Connection connection =
+                        DriverManager.getConnection(url);
+
+                Statement statement =
+                        connection.createStatement()
+        ) {
 
             statement.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS books (
@@ -63,23 +73,24 @@ public class MetadataStore {
                     language TEXT,
                     path TEXT
                 )
-            """);
+                """);
 
             statement.executeUpdate("""
                 CREATE INDEX IF NOT EXISTS idx_books_author
                 ON books(author)
-            """);
+                """);
 
             statement.executeUpdate("""
                 CREATE INDEX IF NOT EXISTS idx_books_title
                 ON books(title)
-            """);
+                """);
         }
     }
 
     private String extract(
             Pattern pattern,
-            String header) {
+            String header
+    ) {
 
         Matcher matcher =
                 pattern.matcher(header);
@@ -113,12 +124,15 @@ public class MetadataStore {
             INSERT OR REPLACE INTO books
             (book_id, title, author, release_date, language, path)
             VALUES (?, ?, ?, ?, ?, ?)
-        """;
+            """;
 
-        try (Connection connection =
-                     DriverManager.getConnection(url);
-             PreparedStatement statement =
-                     connection.prepareStatement(sql)) {
+        try (
+                Connection connection =
+                        DriverManager.getConnection(url);
+
+                PreparedStatement statement =
+                        connection.prepareStatement(sql)
+        ) {
 
             statement.setInt(1, bookId);
             statement.setString(2, title);
@@ -131,6 +145,19 @@ public class MetadataStore {
         }
     }
 
+    public void save(
+            int bookId,
+            String header,
+            String path
+    ) throws SQLException {
+
+        save(
+                bookId,
+                header,
+                Path.of(path)
+        );
+    }
+
     public ResultSet findById(int id)
             throws SQLException {
 
@@ -139,7 +166,7 @@ public class MetadataStore {
 
         PreparedStatement statement =
                 connection.prepareStatement(
-                    "SELECT * FROM books WHERE book_id = ?"
+                        "SELECT * FROM books WHERE book_id = ?"
                 );
 
         statement.setInt(1, id);
@@ -147,16 +174,16 @@ public class MetadataStore {
         return statement.executeQuery();
     }
 
-    public ResultSet findByAuthor(String author)
-            throws SQLException {
+    public ResultSet findByAuthor(
+            String author
+    ) throws SQLException {
 
         Connection connection =
                 DriverManager.getConnection(url);
 
         PreparedStatement statement =
                 connection.prepareStatement(
-                    "SELECT * FROM books " +
-                    "WHERE author LIKE ?"
+                        "SELECT * FROM books WHERE author LIKE ?"
                 );
 
         statement.setString(
@@ -167,16 +194,16 @@ public class MetadataStore {
         return statement.executeQuery();
     }
 
-    public ResultSet findPathByTitle(String title)
-            throws SQLException {
+    public ResultSet findPathByTitle(
+            String title
+    ) throws SQLException {
 
         Connection connection =
                 DriverManager.getConnection(url);
 
         PreparedStatement statement =
                 connection.prepareStatement(
-                    "SELECT path FROM books " +
-                    "WHERE title LIKE ?"
+                        "SELECT path FROM books WHERE title LIKE ?"
                 );
 
         statement.setString(
@@ -185,5 +212,11 @@ public class MetadataStore {
         );
 
         return statement.executeQuery();
+    }
+
+    public Connection openConnection()
+            throws SQLException {
+
+        return DriverManager.getConnection(url);
     }
 }

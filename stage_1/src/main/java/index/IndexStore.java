@@ -1,6 +1,5 @@
 package index;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -16,4 +15,10 @@ public interface IndexStore {
     Map<Integer, List<Integer>> lookup(
             String term
     ) throws Exception;
+
+    void close() throws Exception;
+
+    long diskFiles() throws Exception;
+
+    long diskBytes() throws Exception;
 }

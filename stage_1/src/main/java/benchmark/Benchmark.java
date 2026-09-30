@@ -1,6 +1,6 @@
 package benchmark;
 
-public class Benchmark {
+public class BenchmarkCommon {
 
 }
  

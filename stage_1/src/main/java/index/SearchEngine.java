@@ -1,109 +1,175 @@
 package index;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 public class SearchEngine {
 
-    private final IndexStore store;
+    private final IndexStore index;
 
-    public SearchEngine(IndexStore store) {
-        this.store = store;
+    public SearchEngine(IndexStore index) {
+        this.index = index;
     }
 
-    public Map<Integer, List<Integer>> word(
-            String term)
-            throws Exception {
+    public Map<Integer, List<Integer>> search(
+            String word
+    ) throws Exception {
 
-        return store.lookup(
-                term.toLowerCase()
+        return index.lookup(
+                word.toLowerCase()
         );
     }
 
-    public Set<Integer> and(
-            String... terms)
-            throws Exception {
+    public Map<Integer, List<Integer>> searchAnd(
+            String word1,
+            String word2
+    ) throws Exception {
 
-        if (terms.length == 0) {
-            return Collections.emptySet();
-        }
+        Map<Integer, List<Integer>> first =
+                search(word1);
 
-        Set<Integer> result =
-                new HashSet<>(
-                        store.lookup(
-                                terms[0]
-                        ).keySet()
-                );
+        Map<Integer, List<Integer>> second =
+                search(word2);
 
-        for (int i = 1;
-             i < terms.length;
-             i++) {
+        Set<Integer> common =
+                new HashSet<>(first.keySet());
 
-            result.retainAll(
-                    store.lookup(
-                            terms[i]
-                    ).keySet()
+        common.retainAll(
+                second.keySet()
+        );
+
+        Map<Integer, List<Integer>> result =
+                new HashMap<>();
+
+        for (Integer bookId : common) {
+
+            result.put(
+                    bookId,
+                    first.get(bookId)
             );
         }
 
         return result;
     }
 
-    public Set<Integer> phrase(
-            String phrase)
-            throws Exception {
+    public Map<Integer, List<Integer>> searchPhrase(
+            String phrase
+    ) throws Exception {
 
-        String[] words =
-                phrase.toLowerCase()
-                      .trim()
-                      .split("\\s+");
+        List<String> words =
+                new ArrayList<>(
+                        Tokenizer.tokenize(
+                                phrase
+                        ).keySet()
+                );
 
-        if (words.length == 0) {
-            return Collections.emptySet();
+        if (words.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        /*
+         * Tokenizer.tokenize usa un HashMap, así que para una frase
+         * necesitamos obtener los tokens respetando su orden.
+         */
+        words =
+                orderedTokens(phrase);
+
+        if (words.size() == 1) {
+            return search(words.get(0));
+        }
+
+        Map<String, Map<Integer, List<Integer>>> postings =
+                new HashMap<>();
+
+        for (String word : words) {
+            postings.put(
+                    word,
+                    search(word)
+            );
         }
 
         Map<Integer, List<Integer>> first =
-                store.lookup(words[0]);
+                postings.get(words.get(0));
 
-        Set<Integer> result =
-                new HashSet<>();
+        Map<Integer, List<Integer>> result =
+                new HashMap<>();
 
-        for (Integer bookId :
-                first.keySet()) {
+        for (
+                Map.Entry<Integer, List<Integer>> entry
+                        : first.entrySet()
+        ) {
 
-            List<Integer> positions =
-                    first.get(bookId);
+            int bookId =
+                    entry.getKey();
 
-            for (Integer start :
-                    positions) {
+            for (
+                    Integer start :
+                    entry.getValue()
+            ) {
 
-                boolean match = true;
+                boolean matches = true;
 
-                for (int i = 1;
-                     i < words.length;
-                     i++) {
+                for (
+                        int i = 1;
+                        i < words.size();
+                        i++
+                ) {
 
-                    Map<Integer,
-                            List<Integer>> next =
-                            store.lookup(words[i]);
+                    List<Integer> positions =
+                            postings
+                                    .get(words.get(i))
+                                    .get(bookId);
 
-                    List<Integer> nextPositions =
-                            next.get(bookId);
+                    if (
+                            positions == null
+                                    || !positions.contains(
+                                            start + i
+                                    )
+                    ) {
 
-                    if (nextPositions == null
-                            || !nextPositions.contains(
-                                    start + i
-                            )) {
-
-                        match = false;
+                        matches = false;
                         break;
                     }
                 }
 
-                if (match) {
-                    result.add(bookId);
-                    break;
+                if (matches) {
+
+                    result
+                            .computeIfAbsent(
+                                    bookId,
+                                    k -> new ArrayList<>()
+                            )
+                            .add(start);
                 }
             }
+        }
+
+        return result;
+    }
+
+    private List<String> orderedTokens(
+            String text
+    ) {
+
+        List<String> result =
+                new ArrayList<>();
+
+        String lower =
+                text.toLowerCase();
+
+        java.util.regex.Matcher matcher =
+                java.util.regex.Pattern
+                        .compile("[\\p{L}\\p{N}]+")
+                        .matcher(lower);
+
+        while (matcher.find()) {
+            result.add(
+                    matcher.group()
+            );
         }
 
         return result;
