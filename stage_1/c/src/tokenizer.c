@@ -3,12 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-/* Idea: copiamos el texto, pasamos A-Z a minúsculas y cambiamos cualquier otro
-   carácter por '\0'. Así cada palabra queda como un texto independiente dentro
-   de la misma copia y solo hay que guardar dónde empieza cada una.
-   Los caracteres no ASCII (tildes, ñ, comillas tipográficas...) ocupan bytes
-   fuera de a-z, así que actúan como separadores, igual que en Python. */
-
+/* Words are stored in a single copy of the text where every separator is
+   replaced by '\0', so each word is a string pointing into that buffer.
+   Non-ASCII bytes fall outside a-z and act as separators, like in Python. */
 int tokenize(const char *text, TokenList *out) {
     size_t len = strlen(text);
     out->buffer = malloc(len + 1);
@@ -28,7 +25,6 @@ int tokenize(const char *text, TokenList *out) {
         if (c >= 'a' && c <= 'z') {
             out->buffer[i] = (char)c;
             if (!inside_word) {
-                /* Empieza una palabra nueva: guardamos dónde */
                 if (out->count == capacity) {
                     capacity *= 2;
                     char **bigger = realloc(out->words, capacity * sizeof(char *));

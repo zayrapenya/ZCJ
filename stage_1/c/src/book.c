@@ -9,8 +9,6 @@ static int is_space(char c) {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
 }
 
-/* Copia el trozo text[start, end) quitando los espacios del principio y del final
-   (como .strip() en Python). */
 static char *copy_stripped(const char *text, size_t start, size_t end) {
     while (start < end && is_space(text[start])) start++;
     while (end > start && is_space(text[end - 1])) end--;
@@ -31,8 +29,7 @@ int split_book(const char *text, Book *out) {
     size_t start_pos = (size_t)(start - text);
     size_t end_pos = (size_t)(end - text);
 
-    /* El body empieza después de la línea del marcador ("*** START ... EBOOK TITULO ***"),
-       igual que en Python: buscamos el salto de línea siguiente al marcador. */
+    /* The body starts after the whole marker line, as in the Python version. */
     const char *newline = strchr(start, '\n');
     size_t body_start = newline ? (size_t)(newline - text) : start_pos;
     if (body_start > end_pos) return -1;

@@ -1,4 +1,3 @@
-/* Rutas y constantes globales (equivale a config.py de Python). */
 #ifndef CONFIG_H
 #define CONFIG_H
 

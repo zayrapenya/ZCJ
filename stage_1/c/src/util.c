@@ -19,8 +19,8 @@
 #define MKDIR(p) mkdir(p, 0755)
 #endif
 
-/* En Windows abrimos siempre en modo binario ("rb"/"wb"/"ab") para que
-   no se cambien los saltos de línea y todo coincida con Python y Java. */
+/* Files are always opened in binary mode so Windows does not convert
+   line endings and output matches the Python and Java versions. */
 
 char *read_file(const char *path, size_t *out_len) {
     FILE *f = fopen(path, "rb");
