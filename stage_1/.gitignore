@@ -1,0 +1,8 @@
+target/
+datalake/
+datamarts/
+control/
+*.db
+*.sqlite
+benchmark_tmp_datalake/
+benchmark_results.csv

@@ -10,10 +10,7 @@ public class BookDownloader {
     public static String downloadBook(int bookId) throws Exception {
 
         String url = "https://www.gutenberg.org/cache/epub/"
-                + bookId
-                + "/pg"
-                + bookId
-                + ".txt";
+                + bookId + "/pg" + bookId + ".txt";
 
         HttpClient client = HttpClient.newHttpClient();
 
@@ -26,6 +23,13 @@ public class BookDownloader {
                 request,
                 HttpResponse.BodyHandlers.ofString()
         );
+
+        if (response.statusCode() != 200) {
+            throw new RuntimeException(
+                    "Error descargando libro " + bookId
+                    + ". HTTP: " + response.statusCode()
+            );
+        }
 
         return response.body();
     }

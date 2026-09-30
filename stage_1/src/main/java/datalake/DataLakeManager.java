@@ -4,66 +4,103 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 public class DataLakeManager {
 
-    public static Path saveBook(
+    private static final DateTimeFormatter DATE_FORMAT =
+            DateTimeFormatter.ofPattern("yyyyMMdd");
+
+    public static Path saveBookTimeBased(
             int bookId,
-            String book,
-            String date,
-            String hour
+            String header,
+            String body
     ) throws IOException {
 
-        String header =
-                BookProcessor.extractHeader(book);
+        LocalDateTime now = LocalDateTime.now();
 
-        String body =
-                BookProcessor.extractBody(book);
+        String date = now.format(DATE_FORMAT);
+        int hour = now.getHour();
 
         Path directory = Paths.get(
                 "datalake",
                 date,
-                hour
+                String.format("%02d", hour)
         );
 
         Files.createDirectories(directory);
 
-        Path headerFile =
-                directory.resolve(
-                        bookId + ".header.txt"
-                );
+        Path headerPath =
+                directory.resolve(bookId + ".header.txt");
 
-        Path bodyFile =
-                directory.resolve(
-                        bookId + ".body.txt"
-                );
+        Path bodyPath =
+                directory.resolve(bookId + ".body.txt");
 
-        Files.writeString(
-                headerFile,
-                header
+        Files.writeString(headerPath, header);
+        Files.writeString(bodyPath, body);
+
+        return bodyPath;
+    }
+
+    public static Path saveBookBookBased(
+            int bookId,
+            String header,
+            String body
+    ) throws IOException {
+
+        Path directory = Paths.get(
+                "datalake",
+                "books",
+                String.valueOf(bookId)
         );
 
-        Files.writeString(
-                bodyFile,
-                body
+        Files.createDirectories(directory);
+
+        Path headerPath =
+                directory.resolve("header.txt");
+
+        Path bodyPath =
+                directory.resolve("body.txt");
+
+        Files.writeString(headerPath, header);
+        Files.writeString(bodyPath, body);
+
+        return bodyPath;
+    }
+
+    public static Path saveBookRangeBased(
+            int bookId,
+            String header,
+            String body
+    ) throws IOException {
+
+        int rangeStart = (bookId / 1000) * 1000;
+        int rangeEnd = rangeStart + 999;
+
+        String range = String.format(
+                "%06d-%06d",
+                rangeStart,
+                rangeEnd
         );
 
-        System.out.println(
-                "Datalake creado correctamente."
+        Path directory = Paths.get(
+                "datalake",
+                "ranges",
+                range
         );
 
-        System.out.println(
-                "Directorio: " + directory
-        );
+        Files.createDirectories(directory);
 
-        System.out.println(
-                "Header: " + headerFile
-        );
+        Path headerPath =
+                directory.resolve(bookId + ".header.txt");
 
-        System.out.println(
-                "Body: " + bodyFile
-        );
+        Path bodyPath =
+                directory.resolve(bookId + ".body.txt");
 
-        return directory;
+        Files.writeString(headerPath, header);
+        Files.writeString(bodyPath, body);
+
+        return bodyPath;
     }
 }
