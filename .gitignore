@@ -1,0 +1,10 @@
+# Generated data (root of the repository)
+/datalake/
+/datamarts/
+/control/
+
+# IDE and OS files
+.idea/
+.vscode/
+.DS_Store
+desktop.ini
