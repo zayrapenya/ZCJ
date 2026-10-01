@@ -1,15 +1,13 @@
 package index;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.reflect.TypeToken;
 
 import java.io.IOException;
-import java.lang.reflect.Type;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.lang.reflect.Type;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -19,18 +17,18 @@ public class MonolithicIndex implements IndexStore {
     private final Path file;
 
     private final Gson gson =
-            new GsonBuilder().setPrettyPrinting().create();
+            new Gson();
 
     private final Map<String, Map<Integer, List<Integer>>> index =
             new HashMap<>();
 
-    public MonolithicIndex(Path root)
+    public MonolithicIndex(Path directory)
             throws IOException {
 
-        Files.createDirectories(root);
+        Files.createDirectories(directory);
 
-        file =
-                root.resolve(
+        this.file =
+                directory.resolve(
                         "inverted_index.json"
                 );
 
@@ -40,52 +38,31 @@ public class MonolithicIndex implements IndexStore {
     private void load()
             throws IOException {
 
-        if (!Files.exists(file)
-                || Files.size(file) == 0) {
+        if (!Files.exists(file)) {
             return;
         }
 
         String json =
                 Files.readString(file);
 
-        Type type =
-                new TypeToken<
-                        Map<String,
-                                Map<String,
-                                        List<Integer>>>
-                        >() {
-                        }.getType();
-
-        Map<String, Map<String, List<Integer>>> raw =
-                gson.fromJson(json, type);
-
-        if (raw == null) {
+        if (json.isBlank()) {
             return;
         }
 
-        for (
-                Map.Entry<String, Map<String, List<Integer>>> entry
-                        : raw.entrySet()
-        ) {
+        Type type =
+                new TypeToken<
+                        Map<String, Map<Integer, List<Integer>>>
+                        >() {
+                        }.getType();
 
-            Map<Integer, List<Integer>> postings =
-                    new HashMap<>();
-
-            for (
-                    Map.Entry<String, List<Integer>> doc
-                            : entry.getValue().entrySet()
-            ) {
-
-                postings.put(
-                        Integer.parseInt(doc.getKey()),
-                        new ArrayList<>(doc.getValue())
+        Map<String, Map<Integer, List<Integer>>> loaded =
+                gson.fromJson(
+                        json,
+                        type
                 );
-            }
 
-            index.put(
-                    entry.getKey(),
-                    postings
-            );
+        if (loaded != null) {
+            index.putAll(loaded);
         }
     }
 
@@ -107,7 +84,9 @@ public class MonolithicIndex implements IndexStore {
                     )
                     .put(
                             bookId,
-                            new ArrayList<>(entry.getValue())
+                            new ArrayList<>(
+                                    entry.getValue()
+                            )
                     );
         }
     }
@@ -116,37 +95,9 @@ public class MonolithicIndex implements IndexStore {
     public void flush()
             throws IOException {
 
-        Map<String, Map<String, List<Integer>>> output =
-                new HashMap<>();
-
-        for (
-                Map.Entry<String, Map<Integer, List<Integer>>> entry
-                        : index.entrySet()
-        ) {
-
-            Map<String, List<Integer>> docs =
-                    new HashMap<>();
-
-            for (
-                    Map.Entry<Integer, List<Integer>> doc
-                            : entry.getValue().entrySet()
-            ) {
-
-                docs.put(
-                        String.valueOf(doc.getKey()),
-                        doc.getValue()
-                );
-            }
-
-            output.put(
-                    entry.getKey(),
-                    docs
-            );
-        }
-
         Files.writeString(
                 file,
-                gson.toJson(output)
+                gson.toJson(index)
         );
     }
 
@@ -156,19 +107,18 @@ public class MonolithicIndex implements IndexStore {
     ) {
 
         Map<Integer, List<Integer>> result =
-                index.get(
-                        term.toLowerCase()
-                );
+                index.get(term.toLowerCase());
 
         if (result == null) {
-            return Collections.emptyMap();
+            return new HashMap<>();
         }
 
-        return result;
+        return new HashMap<>(result);
     }
 
     @Override
     public void close() {
+        // No persistent connection/resources.
     }
 
     @Override
@@ -182,8 +132,10 @@ public class MonolithicIndex implements IndexStore {
     public long diskBytes()
             throws IOException {
 
-        return Files.exists(file)
-                ? Files.size(file)
-                : 0;
+        if (!Files.exists(file)) {
+            return 0;
+        }
+
+        return Files.size(file);
     }
 }

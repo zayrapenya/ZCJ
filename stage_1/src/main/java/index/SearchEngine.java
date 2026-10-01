@@ -4,12 +4,18 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class SearchEngine {
 
     private final IndexStore index;
+
+    private static final Pattern WORD_PATTERN =
+            Pattern.compile("[a-z]+");
 
     public SearchEngine(IndexStore index) {
         this.index = index;
@@ -19,9 +25,10 @@ public class SearchEngine {
             String word
     ) throws Exception {
 
-        return index.lookup(
-                word.toLowerCase()
-        );
+        String normalized =
+                word.toLowerCase(Locale.ROOT);
+
+        return index.lookup(normalized);
     }
 
     public Map<Integer, List<Integer>> searchAnd(
@@ -61,39 +68,37 @@ public class SearchEngine {
     ) throws Exception {
 
         List<String> words =
-                new ArrayList<>(
-                        Tokenizer.tokenize(
-                                phrase
-                        ).keySet()
-                );
+                orderedTokens(phrase);
 
         if (words.isEmpty()) {
             return new HashMap<>();
         }
 
         /*
-         * Tokenizer.tokenize usa un HashMap, así que para una frase
-         * necesitamos obtener los tokens respetando su orden.
+         * First retrieve the postings of every word
+         * in the phrase.
          */
-        words =
-                orderedTokens(phrase);
-
-        if (words.size() == 1) {
-            return search(words.get(0));
-        }
-
-        Map<String, Map<Integer, List<Integer>>> postings =
-                new HashMap<>();
+        List<Map<Integer, List<Integer>>> postings =
+                new ArrayList<>();
 
         for (String word : words) {
-            postings.put(
-                    word,
-                    search(word)
-            );
+
+            Map<Integer, List<Integer>> result =
+                    index.lookup(word);
+
+            if (result.isEmpty()) {
+                return new HashMap<>();
+            }
+
+            postings.add(result);
         }
 
+        /*
+         * A book can contain the phrase only if
+         * it contains the first word.
+         */
         Map<Integer, List<Integer>> first =
-                postings.get(words.get(0));
+                postings.get(0);
 
         Map<Integer, List<Integer>> result =
                 new HashMap<>();
@@ -106,6 +111,34 @@ public class SearchEngine {
             int bookId =
                     entry.getKey();
 
+
+            List<Set<Integer>> positionSets =
+                    new ArrayList<>();
+
+            boolean bookContainsAllWords = true;
+
+            for (int i = 0; i < postings.size(); i++) {
+
+                List<Integer> positions =
+                        postings
+                                .get(i)
+                                .get(bookId);
+
+                if (positions == null) {
+                    bookContainsAllWords = false;
+                    break;
+                }
+
+                positionSets.add(
+                        new HashSet<>(positions)
+                );
+            }
+
+            if (!bookContainsAllWords) {
+                continue;
+            }
+
+
             for (
                     Integer start :
                     entry.getValue()
@@ -113,23 +146,11 @@ public class SearchEngine {
 
                 boolean matches = true;
 
-                for (
-                        int i = 1;
-                        i < words.size();
-                        i++
-                ) {
+                for (int i = 1; i < words.size(); i++) {
 
-                    List<Integer> positions =
-                            postings
-                                    .get(words.get(i))
-                                    .get(bookId);
-
-                    if (
-                            positions == null
-                                    || !positions.contains(
-                                            start + i
-                                    )
-                    ) {
+                    if (!positionSets
+                            .get(i)
+                            .contains(start + i)) {
 
                         matches = false;
                         break;
@@ -158,15 +179,13 @@ public class SearchEngine {
         List<String> result =
                 new ArrayList<>();
 
-        String lower =
-                text.toLowerCase();
-
-        java.util.regex.Matcher matcher =
-                java.util.regex.Pattern
-                        .compile("[\\p{L}\\p{N}]+")
-                        .matcher(lower);
+        Matcher matcher =
+                WORD_PATTERN.matcher(
+                        text.toLowerCase(Locale.ROOT)
+                );
 
         while (matcher.find()) {
+
             result.add(
                     matcher.group()
             );

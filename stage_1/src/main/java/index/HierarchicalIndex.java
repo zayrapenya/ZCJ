@@ -1,11 +1,11 @@
 package index;
 
+import java.io.BufferedWriter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,43 +15,31 @@ public class HierarchicalIndex implements IndexStore {
 
     private final Path root;
 
-    private final Map<String, Map<Integer, List<Integer>>> pending =
-            new HashMap<>();
-
-    public HierarchicalIndex(Path root)
+    public HierarchicalIndex(Path directory)
             throws IOException {
 
-        this.root = root;
+        root =
+                directory.resolve(
+                        "inverted_index"
+                );
 
         Files.createDirectories(root);
-    }
-
-    private String safeFileName(String term) {
-
-        String lower =
-                term.toLowerCase();
-
-        if (
-                lower.equals("con")
-                        || lower.equals("prn")
-                        || lower.equals("aux")
-                        || lower.equals("nul")
-        ) {
-            return lower + "_";
-        }
-
-        return lower;
     }
 
     private Path pathFor(String term)
             throws IOException {
 
-        String safe =
-                safeFileName(term);
+        String normalized =
+                term.toLowerCase();
+
+        if (normalized.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "El término no puede estar vacío"
+            );
+        }
 
         String first =
-                safe.substring(0, 1)
-                        .toUpperCase();
+                normalized.substring(0, 1).toUpperCase();
 
         Path directory =
                 root.resolve(first);
@@ -59,7 +47,7 @@ public class HierarchicalIndex implements IndexStore {
         Files.createDirectories(directory);
 
         return directory.resolve(
-                safe + ".txt"
+                normalized + ".txt"
         );
     }
 
@@ -67,69 +55,52 @@ public class HierarchicalIndex implements IndexStore {
     public void addBook(
             int bookId,
             Map<String, List<Integer>> tokens
-    ) {
+    ) throws IOException {
 
         for (
                 Map.Entry<String, List<Integer>> entry
                         : tokens.entrySet()
         ) {
 
-            pending
-                    .computeIfAbsent(
-                            entry.getKey(),
-                            k -> new HashMap<>()
-                    )
-                    .put(
-                            bookId,
-                            new ArrayList<>(
-                                    entry.getValue()
-                            )
-                    );
+            Path file =
+                    pathFor(entry.getKey());
+
+            StringBuilder positions =
+                    new StringBuilder();
+
+            for (
+                    int i = 0;
+                    i < entry.getValue().size();
+                    i++
+            ) {
+
+                if (i > 0) {
+                    positions.append(",");
+                }
+
+                positions.append(
+                        entry.getValue().get(i)
+                );
+            }
+
+            String line =
+                    bookId
+                            + " "
+                            + positions
+                            + "\n";
+
+            Files.writeString(
+                    file,
+                    line,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.APPEND
+            );
         }
     }
 
     @Override
-    public void flush()
-            throws IOException {
+    public void flush() {
 
-        for (
-                Map.Entry<String, Map<Integer, List<Integer>>> entry
-                        : pending.entrySet()
-        ) {
-
-            Path file =
-                    pathFor(entry.getKey());
-
-            for (
-                    Map.Entry<Integer, List<Integer>> doc
-                            : entry.getValue().entrySet()
-            ) {
-
-                String positions =
-                        doc.getValue()
-                                .stream()
-                                .map(String::valueOf)
-                                .reduce(
-                                        (a, b) -> a + "," + b
-                                )
-                                .orElse("");
-
-                String line =
-                        doc.getKey()
-                                + " "
-                                + positions
-                                + System.lineSeparator();
-
-                Files.writeString(
-                        file,
-                        line,
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.APPEND
-                );
-            }
-        }
-
-        pending.clear();
     }
 
     @Override
@@ -137,25 +108,31 @@ public class HierarchicalIndex implements IndexStore {
             String term
     ) throws IOException {
 
-        String safe =
-                safeFileName(
-                        term.toLowerCase()
-                );
+        String normalized =
+                term.toLowerCase();
+
+        if (normalized.isEmpty()) {
+            return new HashMap<>();
+        }
+
+        String first =
+                normalized.substring(0, 1).toUpperCase();
 
         Path file =
-                pathFor(safe);
-
-        if (!Files.exists(file)) {
-            return Collections.emptyMap();
-        }
+                root
+                        .resolve(first)
+                        .resolve(
+                                normalized + ".txt"
+                        );
 
         Map<Integer, List<Integer>> result =
                 new HashMap<>();
 
-        for (
-                String line :
-                Files.readAllLines(file)
-        ) {
+        if (!Files.exists(file)) {
+            return result;
+        }
+
+        for (String line : Files.readAllLines(file)) {
 
             line = line.trim();
 
@@ -169,14 +146,17 @@ public class HierarchicalIndex implements IndexStore {
                             2
                     );
 
+            if (parts.length != 2) {
+                continue;
+            }
+
             int bookId =
                     Integer.parseInt(parts[0]);
 
             List<Integer> positions =
                     new ArrayList<>();
 
-            if (parts.length > 1
-                    && !parts[1].isEmpty()) {
+            if (!parts[1].isBlank()) {
 
                 for (
                         String position :
@@ -200,6 +180,7 @@ public class HierarchicalIndex implements IndexStore {
 
     @Override
     public void close() {
+
     }
 
     @Override
@@ -210,10 +191,10 @@ public class HierarchicalIndex implements IndexStore {
             return 0;
         }
 
-        try (Stream<Path> stream =
+        try (Stream<Path> files =
                      Files.walk(root)) {
 
-            return stream
+            return files
                     .filter(Files::isRegularFile)
                     .count();
         }
@@ -227,18 +208,20 @@ public class HierarchicalIndex implements IndexStore {
             return 0;
         }
 
-        try (Stream<Path> stream =
+        try (Stream<Path> files =
                      Files.walk(root)) {
 
-            return stream
+            return files
                     .filter(Files::isRegularFile)
-                    .mapToLong(path -> {
-                        try {
-                            return Files.size(path);
-                        } catch (IOException e) {
-                            return 0;
-                        }
-                    })
+                    .mapToLong(
+                            path -> {
+                                try {
+                                    return Files.size(path);
+                                } catch (IOException e) {
+                                    return 0;
+                                }
+                            }
+                    )
                     .sum();
         }
     }

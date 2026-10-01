@@ -3,34 +3,37 @@ package index;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class SQLiteIndex implements IndexStore {
 
-    private final Path database;
-
     private final String url;
+    private final Connection connection;
 
-    private final Map<Integer, Map<String, List<Integer>>> pending =
-            new HashMap<>();
-
-    public SQLiteIndex(Path root)
+    public SQLiteIndex(Path directory)
             throws Exception {
 
-        Files.createDirectories(root);
+        Files.createDirectories(directory);
 
-        database =
-                root.resolve(
+        Path database =
+                directory.resolve(
                         "inverted_index.db"
                 );
 
-        url =
+        this.url =
                 "jdbc:sqlite:" + database;
+
+        this.connection =
+                DriverManager.getConnection(url);
 
         initialize();
     }
@@ -38,13 +41,8 @@ public class SQLiteIndex implements IndexStore {
     private void initialize()
             throws SQLException {
 
-        try (
-                Connection connection =
-                        DriverManager.getConnection(url);
-
-                Statement statement =
-                        connection.createStatement()
-        ) {
+        try (Statement statement =
+                     connection.createStatement()) {
 
             statement.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS postings (
@@ -61,89 +59,89 @@ public class SQLiteIndex implements IndexStore {
     public void addBook(
             int bookId,
             Map<String, List<Integer>> tokens
-    ) {
+    ) throws SQLException {
 
-        pending.put(
-                bookId,
-                new HashMap<>(tokens)
-        );
-    }
+        String sql = """
+            INSERT OR REPLACE INTO postings
+            (term, book_id, positions)
+            VALUES (?, ?, ?)
+            """;
 
-    @Override
-    public void flush()
-            throws SQLException {
+        boolean oldAutoCommit =
+                connection.getAutoCommit();
 
-        if (pending.isEmpty()) {
-            return;
-        }
-
-        try (
-                Connection connection =
-                        DriverManager.getConnection(url)
-        ) {
+        try {
 
             connection.setAutoCommit(false);
 
-            String sql = """
-                INSERT OR REPLACE INTO postings
-                (term, book_id, positions)
-                VALUES (?, ?, ?)
-                """;
-
-            try (
-                    PreparedStatement statement =
-                            connection.prepareStatement(sql)
-            ) {
+            try (PreparedStatement statement =
+                         connection.prepareStatement(sql)) {
 
                 for (
-                        Map.Entry<Integer, Map<String, List<Integer>>> book
-                                : pending.entrySet()
+                        Map.Entry<String, List<Integer>> entry
+                                : tokens.entrySet()
                 ) {
 
-                    int bookId =
-                            book.getKey();
+                    StringBuilder positions =
+                            new StringBuilder();
 
                     for (
-                            Map.Entry<String, List<Integer>> entry
-                                    : book.getValue().entrySet()
+                            int i = 0;
+                            i < entry.getValue().size();
+                            i++
                     ) {
 
-                        String positions =
-                                entry.getValue()
-                                        .stream()
-                                        .map(String::valueOf)
-                                        .reduce(
-                                                (a, b) ->
-                                                        a + "," + b
-                                        )
-                                        .orElse("");
+                        if (i > 0) {
+                            positions.append(",");
+                        }
 
-                        statement.setString(
-                                1,
-                                entry.getKey()
+                        positions.append(
+                                entry.getValue().get(i)
                         );
-
-                        statement.setInt(
-                                2,
-                                bookId
-                        );
-
-                        statement.setString(
-                                3,
-                                positions
-                        );
-
-                        statement.addBatch();
                     }
+
+                    statement.setString(
+                            1,
+                            entry.getKey()
+                    );
+
+                    statement.setInt(
+                            2,
+                            bookId
+                    );
+
+                    statement.setString(
+                            3,
+                            positions.toString()
+                    );
+
+                    statement.addBatch();
                 }
 
                 statement.executeBatch();
             }
 
             connection.commit();
-        }
 
-        pending.clear();
+        } catch (Exception e) {
+
+            connection.rollback();
+
+            throw e;
+
+        } finally {
+
+            connection.setAutoCommit(
+                    oldAutoCommit
+            );
+        }
+    }
+
+    @Override
+    public void flush() {
+        /*
+         * SQLite writes are committed in addBook().
+         */
     }
 
     @Override
@@ -151,56 +149,49 @@ public class SQLiteIndex implements IndexStore {
             String term
     ) throws SQLException {
 
+        Map<Integer, List<Integer>> result =
+                new HashMap<>();
+
         String sql = """
             SELECT book_id, positions
             FROM postings
             WHERE term = ?
             """;
 
-        Map<Integer, List<Integer>> result =
-                new HashMap<>();
-
-        try (
-                Connection connection =
-                        DriverManager.getConnection(url);
-
-                PreparedStatement statement =
-                        connection.prepareStatement(sql)
-        ) {
+        try (PreparedStatement statement =
+                     connection.prepareStatement(sql)) {
 
             statement.setString(
                     1,
                     term.toLowerCase()
             );
 
-            try (
-                    ResultSet rs =
-                            statement.executeQuery()
-            ) {
+            try (ResultSet rs =
+                         statement.executeQuery()) {
 
                 while (rs.next()) {
 
                     int bookId =
                             rs.getInt("book_id");
 
-                    String positionsText =
+                    String raw =
                             rs.getString("positions");
 
                     List<Integer> positions =
                             new ArrayList<>();
 
-                    if (
-                            positionsText != null
-                                    && !positionsText.isEmpty()
-                    ) {
+                    if (raw != null
+                            && !raw.isBlank()) {
 
                         for (
                                 String position :
-                                positionsText.split(",")
+                                raw.split(",")
                         ) {
 
                             positions.add(
-                                    Integer.parseInt(position)
+                                    Integer.parseInt(
+                                            position
+                                    )
                             );
                         }
                     }
@@ -217,12 +208,26 @@ public class SQLiteIndex implements IndexStore {
     }
 
     @Override
-    public void close() {
+    public void close()
+            throws SQLException {
+
+        if (!connection.isClosed()) {
+            connection.close();
+        }
     }
 
     @Override
-    public long diskFiles() {
-        return database.toFile().exists()
+    public long diskFiles()
+            throws IOException {
+
+        Path database =
+                Path.of(
+                        url.substring(
+                                "jdbc:sqlite:".length()
+                        )
+                );
+
+        return Files.exists(database)
                 ? 1
                 : 0;
     }
@@ -231,8 +236,17 @@ public class SQLiteIndex implements IndexStore {
     public long diskBytes()
             throws IOException {
 
-        return Files.exists(database)
-                ? Files.size(database)
-                : 0;
+        Path database =
+                Path.of(
+                        url.substring(
+                                "jdbc:sqlite:".length()
+                        )
+                );
+
+        if (!Files.exists(database)) {
+            return 0;
+        }
+
+        return Files.size(database);
     }
 }

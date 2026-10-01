@@ -2,13 +2,19 @@ package metadata;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.sql.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class MetadataStore {
+public class MetadataStore implements AutoCloseable {
 
     private final String url;
+    private final Connection connection;
 
     private static final Pattern TITLE =
             Pattern.compile(
@@ -42,6 +48,7 @@ public class MetadataStore {
                 Path.of(databasePath);
 
         if (database.getParent() != null) {
+
             Files.createDirectories(
                     database.getParent()
             );
@@ -50,19 +57,17 @@ public class MetadataStore {
         this.url =
                 "jdbc:sqlite:" + databasePath;
 
+        this.connection =
+                DriverManager.getConnection(url);
+
         initialize();
     }
 
     private void initialize()
             throws SQLException {
 
-        try (
-                Connection connection =
-                        DriverManager.getConnection(url);
-
-                Statement statement =
-                        connection.createStatement()
-        ) {
+        try (Statement statement =
+                     connection.createStatement()) {
 
             statement.executeUpdate("""
                 CREATE TABLE IF NOT EXISTS books (
@@ -84,6 +89,11 @@ public class MetadataStore {
                 CREATE INDEX IF NOT EXISTS idx_books_title
                 ON books(title)
                 """);
+
+            statement.executeUpdate("""
+                CREATE INDEX IF NOT EXISTS idx_books_language
+                ON books(language)
+                """);
         }
     }
 
@@ -99,7 +109,7 @@ public class MetadataStore {
             return matcher.group(1).trim();
         }
 
-        return "";
+        return null;
     }
 
     public void save(
@@ -126,20 +136,18 @@ public class MetadataStore {
             VALUES (?, ?, ?, ?, ?, ?)
             """;
 
-        try (
-                Connection connection =
-                        DriverManager.getConnection(url);
-
-                PreparedStatement statement =
-                        connection.prepareStatement(sql)
-        ) {
+        try (PreparedStatement statement =
+                     connection.prepareStatement(sql)) {
 
             statement.setInt(1, bookId);
             statement.setString(2, title);
             statement.setString(3, author);
             statement.setString(4, releaseDate);
             statement.setString(5, language);
-            statement.setString(6, path.toString());
+            statement.setString(
+                    6,
+                    path.toString()
+            );
 
             statement.executeUpdate();
         }
@@ -161,12 +169,13 @@ public class MetadataStore {
     public ResultSet findById(int id)
             throws SQLException {
 
-        Connection connection =
-                DriverManager.getConnection(url);
-
         PreparedStatement statement =
                 connection.prepareStatement(
-                        "SELECT * FROM books WHERE book_id = ?"
+                        """
+                        SELECT *
+                        FROM books
+                        WHERE book_id = ?
+                        """
                 );
 
         statement.setInt(1, id);
@@ -178,12 +187,13 @@ public class MetadataStore {
             String author
     ) throws SQLException {
 
-        Connection connection =
-                DriverManager.getConnection(url);
-
         PreparedStatement statement =
                 connection.prepareStatement(
-                        "SELECT * FROM books WHERE author LIKE ?"
+                        """
+                        SELECT *
+                        FROM books
+                        WHERE author LIKE ?
+                        """
                 );
 
         statement.setString(
@@ -194,29 +204,75 @@ public class MetadataStore {
         return statement.executeQuery();
     }
 
-    public ResultSet findPathByTitle(
-            String title
+    public ResultSet findByLanguage(
+            String language
     ) throws SQLException {
-
-        Connection connection =
-                DriverManager.getConnection(url);
 
         PreparedStatement statement =
                 connection.prepareStatement(
-                        "SELECT path FROM books WHERE title LIKE ?"
+                        """
+                        SELECT *
+                        FROM books
+                        WHERE language = ?
+                        """
                 );
 
         statement.setString(
                 1,
-                "%" + title + "%"
+                language
         );
 
         return statement.executeQuery();
     }
 
-    public Connection openConnection()
+    public ResultSet findPathByTitle(
+            String title
+    ) throws SQLException {
+
+        PreparedStatement statement =
+                connection.prepareStatement(
+                        """
+                        SELECT path
+                        FROM books
+                        WHERE title = ?
+                        """
+                );
+
+        statement.setString(
+                1,
+                title
+        );
+
+        return statement.executeQuery();
+    }
+
+    public int count()
             throws SQLException {
 
-        return DriverManager.getConnection(url);
+        try (
+                Statement statement =
+                        connection.createStatement();
+
+                ResultSet result =
+                        statement.executeQuery(
+                                "SELECT COUNT(*) FROM books"
+                        )
+        ) {
+
+            return result.getInt(1);
+        }
+    }
+
+    public Connection openConnection() {
+        return connection;
+    }
+
+    @Override
+    public void close()
+            throws SQLException {
+
+        if (!connection.isClosed()) {
+            connection.close();
+        }
     }
 }
