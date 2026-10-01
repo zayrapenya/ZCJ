@@ -4,6 +4,7 @@ import metadata.MetadataStore;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
@@ -69,8 +70,29 @@ public class MetadataBenchmark {
                         database.toString()
                 );
 
+        /*
+         * Headers are read once, outside the timed section,
+         * so only the database inserts are measured.
+         */
+        List<String> headers =
+                new ArrayList<>();
+
+        for (int i = 0; i < BenchmarkCommon.SAMPLE_BOOKS.length; i++) {
+            headers.add(
+                    BenchmarkCommon.sampleHeader(i)
+            );
+        }
+
+        Connection connection =
+                metadata.openConnection();
+
         long start =
                 System.nanoTime();
+
+        /*
+         * All inserts in a single transaction.
+         */
+        connection.setAutoCommit(false);
 
         for (int i = 0; i < n; i++) {
 
@@ -82,8 +104,8 @@ public class MetadataBenchmark {
 
             metadata.save(
                     id,
-                    BenchmarkCommon.sampleHeader(
-                            i
+                    headers.get(
+                            i % headers.size()
                     ),
                     Path.of(
                             "sample_data",
@@ -93,8 +115,12 @@ public class MetadataBenchmark {
             );
         }
 
+        connection.commit();
+
         long insertTime =
                 System.nanoTime() - start;
+
+        connection.setAutoCommit(true);
 
         double insertRate =
                 n
