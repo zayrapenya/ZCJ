@@ -3,21 +3,33 @@ package benchmark;
 import control.ControlManager;
 import datalake.BookPaths;
 import datalake.BookDatalake;
+import datalake.BookProcessor;
 import datalake.DateTimeDatalake;
 import datalake.Datalake;
 import datalake.RangeDatalake;
 
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 
 public class DatalakeBenchmark {
 
     private static final String CSV =
             "java_datalake.csv";
+
+    private static final int BOOKS_PER_HOUR =
+            10;
+
+    private static final int LOOKUPS =
+            500;
+
+    private static final LocalDateTime BASE_TIME =
+            LocalDateTime.of(2025, 9, 25, 0, 0);
 
     public static void main(
             String[] args
@@ -42,7 +54,7 @@ public class DatalakeBenchmark {
 
             run(
                     rows,
-                    "date_time",
+                    "time",
                     n
             );
 
@@ -83,78 +95,41 @@ public class DatalakeBenchmark {
                                 + n
                 );
 
-        Datalake datalake;
-
-        switch (structure) {
-
-            case "date_time":
-                datalake =
-                        new DateTimeDatalake(root);
-                break;
-
-            case "book":
-                datalake =
-                        new BookDatalake(root);
-                break;
-
-            case "range":
-                datalake =
-                        new RangeDatalake(root);
-                break;
-
-            default:
-                throw new IllegalArgumentException(
-                        "Estructura desconocida"
+        Datalake datalake =
+                createDatalake(
+                        structure,
+                        root
                 );
-        }
 
         /*
-         * WRITE
+         * Raw books are loaded once, outside the timed section.
+         */
+        List<String> rawBooks =
+                loadRawBooks();
+
+        /*
+         * WRITE (split header/body + store)
          */
         long start =
                 System.nanoTime();
 
         for (int i = 0; i < n; i++) {
 
-            int sourceId =
-                    BenchmarkCommon.sampleBook(i);
-
             int id =
                     BenchmarkCommon.syntheticBookId(i);
 
-            String header =
-                    BenchmarkCommon.sampleHeader(
-                            i
+            String raw =
+                    rawBooks.get(
+                            i % rawBooks.size()
                     );
 
-            String body =
-                    BenchmarkCommon.sampleBody(
-                            i
-                    );
-
-            if (datalake instanceof DateTimeDatalake) {
-
-                ((DateTimeDatalake) datalake).save(
-                        id,
-                        header,
-                        body,
-                        LocalDateTime.of(
-                                2026,
-                                10,
-                                1,
-                                10,
-                                0
-                        )
-                );
-
-            } else {
-
-                datalake.save(
-                        id,
-                        header,
-                        body
-                );
-            }
+            saveAt(
+                    datalake,
+                    id,
+                    BookProcessor.extractHeader(raw),
+                    BookProcessor.extractBody(raw),
+                    ingestionTime(BASE_TIME, i)
+            );
         }
 
         long writeTime =
@@ -180,10 +155,20 @@ public class DatalakeBenchmark {
          * LOOKUP
          */
         int lookupCount =
-                Math.min(
-                        100,
-                        n
-                );
+                LOOKUPS;
+
+        Random random =
+                new Random(42);
+
+        int[] lookupIds =
+                new int[lookupCount];
+
+        for (int i = 0; i < lookupCount; i++) {
+            lookupIds[i] =
+                    BenchmarkCommon.syntheticBookId(
+                            random.nextInt(n)
+                    );
+        }
 
         start =
                 System.nanoTime();
@@ -191,9 +176,7 @@ public class DatalakeBenchmark {
         for (int i = 0; i < lookupCount; i++) {
 
             int id =
-                    BenchmarkCommon.syntheticBookId(
-                            i
-                    );
+                    lookupIds[i];
 
             BookPaths paths =
                     datalake.locate(id);
@@ -440,6 +423,88 @@ public class DatalakeBenchmark {
         BenchmarkCommon.deleteDirectory(
                 root
         );
+    }
+
+    private static Datalake createDatalake(
+            String structure,
+            Path root
+    ) {
+
+        switch (structure) {
+
+            case "time":
+                return new DateTimeDatalake(root);
+
+            case "book":
+                return new BookDatalake(root);
+
+            case "range":
+                return new RangeDatalake(root);
+
+            default:
+                throw new IllegalArgumentException(
+                        "Estructura desconocida"
+                );
+        }
+    }
+
+    private static List<String> loadRawBooks()
+            throws IOException {
+
+        List<String> rawBooks =
+                new ArrayList<>();
+
+        for (int bookId : BenchmarkCommon.SAMPLE_BOOKS) {
+            rawBooks.add(
+                    Files.readString(
+                            BenchmarkCommon.sampleDataRoot()
+                                    .resolve("pg" + bookId + ".txt")
+                    )
+            );
+        }
+
+        return rawBooks;
+    }
+
+    /*
+     * Simulated ingestion rate for the time-based layout,
+     * the same as in the Python benchmark.
+     */
+    private static LocalDateTime ingestionTime(
+            LocalDateTime base,
+            int index
+    ) {
+
+        return base.plusHours(
+                index / BOOKS_PER_HOUR
+        );
+    }
+
+    private static void saveAt(
+            Datalake datalake,
+            int id,
+            String header,
+            String body,
+            LocalDateTime time
+    ) throws IOException {
+
+        if (datalake instanceof DateTimeDatalake) {
+
+            ((DateTimeDatalake) datalake).save(
+                    id,
+                    header,
+                    body,
+                    time
+            );
+
+        } else {
+
+            datalake.save(
+                    id,
+                    header,
+                    body
+            );
+        }
     }
 
     private static void add(
