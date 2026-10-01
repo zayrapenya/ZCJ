@@ -281,18 +281,15 @@ public class IndexBenchmark {
         );
 
         /*
-         * Update one book.
+         * Update: add one new book to the existing index.
          */
         int updateId =
-                BenchmarkCommon.syntheticBookId(0);
-
-        int sourceId =
-                BenchmarkCommon.sampleBook(0);
+                BenchmarkCommon.syntheticBookId(n);
 
         Map<String, List<Integer>> tokens =
                 Tokenizer.tokenize(
                         BenchmarkCommon.sampleBody(
-                                sourceId
+                                n
                         )
                 );
 
