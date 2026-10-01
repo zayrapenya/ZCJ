@@ -95,10 +95,17 @@ public class DatalakeBenchmark {
                                 + n
                 );
 
+        /*
+         * Datalake and control files live in separate folders,
+         * so the storage metrics only count the datalake.
+         */
+        Path datalakeRoot =
+                root.resolve("datalake");
+
         Datalake datalake =
                 createDatalake(
                         structure,
-                        root
+                        datalakeRoot
                 );
 
         /*
@@ -308,17 +315,18 @@ public class DatalakeBenchmark {
          */
         long files =
                 BenchmarkCommon.countFiles(
-                        root
+                        datalakeRoot
                 );
 
+        // The datalake root folder itself is not counted
         long dirs =
                 BenchmarkCommon.countDirectories(
-                        root
-                );
+                        datalakeRoot
+                ) - 1;
 
         long bytes =
                 BenchmarkCommon.directoryBytes(
-                        root
+                        datalakeRoot
                 );
 
         add(
@@ -347,50 +355,137 @@ public class DatalakeBenchmark {
                 )
         );
 
+        BenchmarkCommon.deleteDirectory(
+                root
+        );
+
+        recovery(
+                rows,
+                structure,
+                n,
+                rawBooks
+        );
+    }
+
+    /*
+     * RECOVERY
+     *
+     * Simulates an interrupted ingestion, as in the Python benchmark:
+     * 1. 60% of the books are ingested normally.
+     * 2. Crash: the next book is written to the datalake but it is
+     *    not registered in downloaded_books.txt.
+     * 3. The pipeline restarts one day later and ingests every book
+     *    that is not in the control file.
+     * 4. Duplicated (extra body files) and lost books are counted.
+     */
+    private static void recovery(
+            List<String[]> rows,
+            String structure,
+            int n,
+            List<String> rawBooks
+    ) throws Exception {
+
+        Path root =
+                BenchmarkCommon.benchmarkRoot(
+                        "stage1_bench_java_recovery_"
+                                + structure
+                                + "_"
+                                + n
+                );
+
+        Datalake datalake =
+                createDatalake(
+                        structure,
+                        root.resolve("datalake")
+                );
+
+        ControlManager control =
+                new ControlManager(
+                        root.resolve("control")
+                );
+
+        int cut =
+                (int) (n * 0.6);
+
+        for (int i = 0; i < cut; i++) {
+
+            ingest(
+                    datalake,
+                    control,
+                    i,
+                    rawBooks,
+                    ingestionTime(BASE_TIME, i)
+            );
+        }
+
         /*
-         * RECOVERY
-         *
-         * Simulate an interrupted execution:
-         * all downloaded, only half indexed.
+         * Crash: written to disk but not registered.
          */
-        start =
+        String crashed =
+                rawBooks.get(
+                        cut % rawBooks.size()
+                );
+
+        saveAt(
+                datalake,
+                BenchmarkCommon.syntheticBookId(cut),
+                BookProcessor.extractHeader(crashed),
+                BookProcessor.extractBody(crashed),
+                BASE_TIME
+        );
+
+        /*
+         * Restart.
+         */
+        long start =
                 System.nanoTime();
 
-        Set<Integer> recoveryPending =
-                control.pending();
+        Set<Integer> done =
+                control.downloaded();
+
+        for (int i = 0; i < n; i++) {
+
+            if (!done.contains(BenchmarkCommon.syntheticBookId(i))) {
+
+                ingest(
+                        datalake,
+                        control,
+                        i,
+                        rawBooks,
+                        ingestionTime(BASE_TIME.plusDays(1), i)
+                );
+            }
+        }
 
         long recoveryTime =
                 System.nanoTime() - start;
 
-        int duplicated =
-                0;
+        Set<Integer> stored =
+                datalake.bookIds();
 
-        int lost =
-                0;
+        long bodyFiles;
 
-        /*
-         * Existing datalake IDs must all be
-         * represented in downloaded control.
-         */
-        Set<Integer> downloadedIds =
-                control.downloaded();
-
-        for (Integer id : existing) {
-
-            if (!downloadedIds.contains(id)) {
-                lost++;
-            }
+        try (var paths = Files.walk(root.resolve("datalake"))) {
+            bodyFiles =
+                    paths
+                            .filter(Files::isRegularFile)
+                            .filter(p ->
+                                    p.getFileName()
+                                            .toString()
+                                            .endsWith("body.txt"))
+                            .count();
         }
 
-        /*
-         * Pending books are exactly the books
-         * downloaded but not indexed.
-         */
-        for (Integer id :
-                recoveryPending) {
+        long duplicated =
+                bodyFiles - stored.size();
 
-            if (control.indexed().contains(id)) {
-                duplicated++;
+        long lost =
+                0;
+
+        for (int i = 0; i < n; i++) {
+
+            if (!stored.contains(BenchmarkCommon.syntheticBookId(i))) {
+                lost++;
             }
         }
 
@@ -423,6 +518,33 @@ public class DatalakeBenchmark {
         BenchmarkCommon.deleteDirectory(
                 root
         );
+    }
+
+    private static void ingest(
+            Datalake datalake,
+            ControlManager control,
+            int index,
+            List<String> rawBooks,
+            LocalDateTime time
+    ) throws IOException {
+
+        String raw =
+                rawBooks.get(
+                        index % rawBooks.size()
+                );
+
+        int id =
+                BenchmarkCommon.syntheticBookId(index);
+
+        saveAt(
+                datalake,
+                id,
+                BookProcessor.extractHeader(raw),
+                BookProcessor.extractBody(raw),
+                time
+        );
+
+        control.addDownloaded(id);
     }
 
     private static Datalake createDatalake(
