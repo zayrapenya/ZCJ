@@ -1,7 +1,7 @@
-target/
-datalake/
-datamarts/
-control/
+/target/
+/datalake/
+/datamarts/
+/control/
 .idea/
 desktop.ini
 java_datalake.csv
