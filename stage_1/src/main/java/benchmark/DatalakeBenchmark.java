@@ -124,12 +124,12 @@ public class DatalakeBenchmark {
 
             String header =
                     BenchmarkCommon.sampleHeader(
-                            sourceId
+                            i
                     );
 
             String body =
                     BenchmarkCommon.sampleBody(
-                            sourceId
+                            i
                     );
 
             if (datalake instanceof DateTimeDatalake) {

@@ -128,7 +128,7 @@ public class IndexBenchmark {
 
             String body =
                     BenchmarkCommon.sampleBody(
-                            sourceId
+                            i
                     );
 
             Map<String, List<Integer>> tokens =

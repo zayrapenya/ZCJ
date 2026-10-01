@@ -83,7 +83,7 @@ public class MetadataBenchmark {
             metadata.save(
                     id,
                     BenchmarkCommon.sampleHeader(
-                            sourceId
+                            i
                     ),
                     Path.of(
                             "sample_data",
