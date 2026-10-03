@@ -19,6 +19,7 @@
 #include "metadata.h"
 #include "search.h"
 #include "util.h"
+#include "benchmark.h"
 
 #define MAX_IDS 1024
 
@@ -30,8 +31,9 @@ static void usage(void) {
            "  run [--steps N] [--ids <ids...>]\n"
            "  sample\n"
            "  search \"<query>\" [--phrase]\n"
-           "  metadata [--author X | --language X | --id N]\n");
-}
+           "  metadata [--author X | --language X | --id N]\n"
+           "  bench datalake|index|metadata|all [sizes...]\n");
+        }
 
 static int collect_sample_id(const char *path, const char *name, int is_dir,
                              long long size, void *ctx) {
@@ -134,6 +136,15 @@ int main(int argc, char **argv) {
         return 1;
     }
     const char *command = argv[arg++];
+    
+    /* Benchmarks use their own scratch folders, not the real datalake */
+    if (strcmp(command, "bench") == 0) {
+        int sizes[32];
+        size_t n_sizes = 0;
+        const char *which = arg < argc ? argv[arg++] : "";
+        for (; arg < argc && n_sizes < 32; arg++) sizes[n_sizes++] = atoi(argv[arg]);
+        return run_benchmark(which, sizes, n_sizes);
+    }
 
     DatalakeLayout layout;
     IndexKind kind;

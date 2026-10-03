@@ -175,8 +175,14 @@ int datalake_book_ids(const Datalake *lake, IdList *out) {
     }
 
     qsort(c.ids, c.count, sizeof(int), compare_ints);
+
+    /* A book stored twice (e.g. after an interrupted run) counts once, like a set */
+    size_t unique = 0;
+    for (size_t i = 0; i < c.count; i++) {
+        if (unique == 0 || c.ids[unique - 1] != c.ids[i]) c.ids[unique++] = c.ids[i];
+    }
     out->ids = c.ids;
-    out->count = c.count;
+    out->count = unique;
     return 0;
 }
 

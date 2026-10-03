@@ -1,6 +1,6 @@
 CC      = gcc
-CFLAGS  = -std=c11 -O2 -Wall -Wextra -Wno-format-truncation -Isrc
-LDLIBS  = -lsqlite3 -lcurl
+CFLAGS  = -std=c11 -O2 -Wall -Wextra -Wno-format-truncation -Isrc -include src/memtrack.h
+LDLIBS  = -lsqlite3 -lcurl 
 
 SRC     = $(wildcard src/*.c)
 OBJ     = $(patsubst src/%.c,build/%.o,$(SRC))
