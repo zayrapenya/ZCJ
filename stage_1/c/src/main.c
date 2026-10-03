@@ -1,123 +1,221 @@
+/* Command line entry point, with the same commands as the Python version:
+     search_engine [--datalake time|book|range] [--index monolithic|hierarchical|sqlite] <command>
+       download 1342 84 1661       download books into the datalake
+       index                       index every downloaded book not yet indexed
+       run [--steps N] [--ids ...] control layer: alternate download / index
+       sample                      ingest the offline sample dataset
+       search "mr darcy" [--phrase]
+       metadata [--author X | --language X | --id N] */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "book.h"
 #include "config.h"
+#include "control.h"
+#include "datalake.h"
 #include "disk_index.h"
+#include "downloader.h"
+#include "metadata.h"
 #include "search.h"
-#include "tokenizer.h"
 #include "util.h"
 
-static const int SAMPLE_IDS[] = {11, 84, 98, 1342, 1661};
-#define N_SAMPLE (sizeof(SAMPLE_IDS) / sizeof(SAMPLE_IDS[0]))
+#define MAX_IDS 1024
 
-typedef enum { WORD, AND, PHRASE } QueryType;
-
-typedef struct {
-    QueryType type;
-    const char *text;       /* AND queries: words separated by spaces */
-    size_t books;           /* expected results, from the Python version */
-    size_t hits;
-} Query;
-
-/* Same query workload as the benchmarks of every language */
-static const Query QUERIES[] = {
-    {WORD, "darcy", 1, 432},       {WORD, "monster", 2, 32},
-    {WORD, "alice", 2, 411},       {WORD, "holmes", 1, 462},
-    {WORD, "love", 5, 238},        {WORD, "the", 5, 24192},
-    {WORD, "revolution", 3, 12},   {WORD, "creature", 5, 98},
-    {WORD, "queen", 4, 90},        {WORD, "zzzz", 0, 0},
-    {AND, "darcy love", 1, 432},   {AND, "monster night", 2, 32},
-    {AND, "alice queen", 2, 411},  {AND, "holmes watson", 1, 462},
-    {PHRASE, "mr darcy", 1, 277},  {PHRASE, "sherlock holmes", 1, 97},
-    {PHRASE, "the white rabbit", 1, 21},
-    {PHRASE, "it was the best of times", 1, 1},
-};
-#define N_QUERIES (sizeof(QUERIES) / sizeof(QUERIES[0]))
-
-static const char *TYPE_NAMES[] = {"word", "and", "phrase"};
-
-/* Builds the index of the sample in datamarts/<kind> if it does not exist yet */
-static int open_sample_index(DiskIndex *index, IndexKind kind) {
-    char datamarts[256];
-    snprintf(datamarts, sizeof(datamarts), "%s/%s", DATAMARTS_DIR, index_kind_name(kind));
-    if (disk_index_open(index, kind, datamarts) != 0) return -1;
-
-    PostingList probe;
-    disk_index_lookup(index, "darcy", &probe);
-    int exists = probe.count > 0;
-    free_postings(&probe);
-    if (exists) return 0;
-
-    printf("  building %s index...\n", index_kind_name(kind));
-    for (size_t i = 0; i < N_SAMPLE; i++) {
-        char path[256];
-        snprintf(path, sizeof(path), "%s/pg%d.txt", SAMPLE_DIR, SAMPLE_IDS[i]);
-        char *text = read_file(path, NULL);
-        Book book;
-        if (!text || split_book(text, &book) != 0) { free(text); return -1; }
-        TokenList tokens;
-        tokenize(book.body, &tokens);
-        disk_index_add_book(index, SAMPLE_IDS[i], &tokens);
-        free_tokens(&tokens);
-        free_book(&book);
-        free(text);
-    }
-    return disk_index_flush(index);
+static void usage(void) {
+    printf("Usage: search_engine [--datalake time|book|range] "
+           "[--index monolithic|hierarchical|sqlite] <command>\n"
+           "  download <ids...>\n"
+           "  index\n"
+           "  run [--steps N] [--ids <ids...>]\n"
+           "  sample\n"
+           "  search \"<query>\" [--phrase]\n"
+           "  metadata [--author X | --language X | --id N]\n");
 }
 
-static void run_query(DiskIndex *index, const Query *query, PostingList *out) {
-    if (query->type == WORD) {
-        search_word(index, query->text, out);
-    } else if (query->type == PHRASE) {
-        search_phrase(index, query->text, out);
+static int collect_sample_id(const char *path, const char *name, int is_dir,
+                             long long size, void *ctx) {
+    (void)path; (void)size;
+    IdList *ids = ctx;
+    int id;
+    char ext[8];
+    if (!is_dir && ids->count < MAX_IDS && sscanf(name, "pg%d.%4s", &id, ext) == 2 &&
+        strcmp(ext, "txt") == 0) {
+        ids->ids[ids->count++] = id;
+    }
+    return 0;
+}
+
+static int compare_ints(const void *a, const void *b) {
+    int x = *(const int *)a, y = *(const int *)b;
+    return (x > y) - (x < y);
+}
+
+static int compare_hits(const void *a, const void *b) {
+    size_t x = ((const Posting *)a)->count, y = ((const Posting *)b)->count;
+    return (x < y) - (x > y);   /* most hits first */
+}
+
+static void print_row(const BookRow *row) {
+    printf("%6d | %s | %s | %s | %s | %s\n", row->book_id,
+           row->meta.title ? row->meta.title : "-", row->meta.author ? row->meta.author : "-",
+           row->meta.release_date ? row->meta.release_date : "-",
+           row->meta.language ? row->meta.language : "-", row->path ? row->path : "-");
+}
+
+static void cmd_search(DiskIndex *index, MetadataStore *metadata, char *query, int phrase) {
+    PostingList results;
+    if (phrase) {
+        search_phrase(index, query, &results);
     } else {
-        char copy[256];
-        const char *words[16];
+        const char *words[64];
         size_t n = 0;
-        snprintf(copy, sizeof(copy), "%s", query->text);
-        for (char *w = strtok(copy, " "); w && n < 16; w = strtok(NULL, " ")) words[n++] = w;
-        search_and(index, words, n, out);
+        for (char *w = strtok(query, " "); w && n < 64; w = strtok(NULL, " ")) words[n++] = w;
+        search_and(index, words, n, &results);
     }
+
+    if (results.count == 0) printf("No results.\n");
+    qsort(results.items, results.count, sizeof(Posting), compare_hits);
+    for (size_t i = 0; i < results.count; i++) {
+        BookRow row = {0};
+        int found = metadata_get(metadata, results.items[i].book_id, &row) == 0;
+        printf("%6d  %5zu hits  %s - %s\n", results.items[i].book_id, results.items[i].count,
+               found && row.meta.title ? row.meta.title : "-",
+               found && row.meta.author ? row.meta.author : "-");
+        if (found) free_book_row(&row);
+    }
+    free_postings(&results);
 }
 
-int main(void) {
-    printf("Stage 1 - C implementation\n\n");
-
-    int total_ok = 0;
-    for (int kind = 0; kind < N_INDEX_KINDS; kind++) {
-        DiskIndex index;
-        if (open_sample_index(&index, (IndexKind)kind) != 0) {
-            printf("  %s: could not open the index\n", index_kind_name((IndexKind)kind));
-            continue;
+static void cmd_metadata(MetadataStore *metadata, const char *author, const char *language, int id) {
+    BookRows rows = {NULL, 0};
+    if (id > 0) {
+        BookRow row;
+        if (metadata_get(metadata, id, &row) == 0) {
+            print_row(&row);
+            free_book_row(&row);
         }
-
-        int ok = 0;
-        double start = now_seconds();
-        for (size_t q = 0; q < N_QUERIES; q++) {
-            PostingList result;
-            run_query(&index, &QUERIES[q], &result);
-
-            size_t hits = 0;
-            for (size_t b = 0; b < result.count; b++) hits += result.items[b].count;
-            int same = result.count == QUERIES[q].books && hits == QUERIES[q].hits;
-            ok += same;
-            if (!same) {
-                printf("  %s: %s \"%s\" -> %zu books, %zu hits (expected %zu, %zu)\n",
-                       index_kind_name((IndexKind)kind), TYPE_NAMES[QUERIES[q].type],
-                       QUERIES[q].text, result.count, hits, QUERIES[q].books, QUERIES[q].hits);
+        return;
+    }
+    if (author) {
+        metadata_by_author(metadata, author, &rows);
+    } else if (language) {
+        metadata_by_language(metadata, language, &rows);
+    } else {
+        /* Every book, ordered by id */
+        sqlite3_stmt *stmt;
+        sqlite3_prepare_v2(metadata->db, "SELECT book_id FROM books ORDER BY book_id", -1, &stmt, NULL);
+        while (sqlite3_step(stmt) == SQLITE_ROW) {
+            BookRow row;
+            if (metadata_get(metadata, sqlite3_column_int(stmt, 0), &row) == 0) {
+                print_row(&row);
+                free_book_row(&row);
             }
-            free_postings(&result);
         }
-        double elapsed_ms = 1000 * (now_seconds() - start);
+        sqlite3_finalize(stmt);
+        return;
+    }
+    for (size_t i = 0; i < rows.count; i++) print_row(&rows.rows[i]);
+    free_book_rows(&rows);
+}
 
-        printf("  %-13s %2d of %zu queries match Python  (%.2f ms)\n",
-               index_kind_name((IndexKind)kind), ok, N_QUERIES, elapsed_ms);
-        total_ok += ok == (int)N_QUERIES;
-        disk_index_close(&index);
+int main(int argc, char **argv) {
+    const char *layout_name = "time";
+    const char *index_name = "monolithic";
+
+    int arg = 1;
+    while (arg + 1 < argc && strncmp(argv[arg], "--", 2) == 0) {
+        if (strcmp(argv[arg], "--datalake") == 0) layout_name = argv[arg + 1];
+        else if (strcmp(argv[arg], "--index") == 0) index_name = argv[arg + 1];
+        arg += 2;
+    }
+    if (arg >= argc) {
+        usage();
+        return 1;
+    }
+    const char *command = argv[arg++];
+
+    DatalakeLayout layout;
+    IndexKind kind;
+    if (datalake_parse_layout(layout_name, &layout) != 0 || index_kind_parse(index_name, &kind) != 0) {
+        usage();
+        return 1;
     }
 
-    printf("\n%d of %d index structures answer every query like Python\n", total_ok, N_INDEX_KINDS);
-    return total_ok == N_INDEX_KINDS ? 0 : 1;
+    Datalake datalake;
+    datalake_init(&datalake, layout, DATALAKE_DIR);
+    DiskIndex index;
+    MetadataStore metadata;
+    char metadata_path[256];
+    snprintf(metadata_path, sizeof(metadata_path), "%s/metadata.db", DATAMARTS_DIR);
+    if (disk_index_open(&index, kind, DATAMARTS_DIR) != 0 ||
+        metadata_open(&metadata, metadata_path) != 0) {
+        printf("Could not open the datamarts in %s\n", DATAMARTS_DIR);
+        return 1;
+    }
+
+    Pipeline pipeline;
+    int ids[MAX_IDS];
+    size_t n_ids = 0;
+
+    if (strcmp(command, "download") == 0) {
+        pipeline_init(&pipeline, &datalake, &index, &metadata, CONTROL_DIR, download_book);
+        for (; arg < argc; arg++) pipeline_download(&pipeline, atoi(argv[arg]));
+
+    } else if (strcmp(command, "index") == 0) {
+        pipeline_init(&pipeline, &datalake, &index, &metadata, CONTROL_DIR, download_book);
+        IdList pending;
+        pipeline_pending(&pipeline, &pending);
+        for (size_t i = 0; i < pending.count; i++) pipeline_index_book(&pipeline, pending.ids[i]);
+        free_ids(&pending);
+
+    } else if (strcmp(command, "run") == 0) {
+        int steps = 10;
+        for (; arg < argc; arg++) {
+            if (strcmp(argv[arg], "--steps") == 0 && arg + 1 < argc) {
+                steps = atoi(argv[++arg]);
+            } else if (strcmp(argv[arg], "--ids") != 0 && n_ids < MAX_IDS) {
+                ids[n_ids++] = atoi(argv[arg]);
+            }
+        }
+        pipeline_init(&pipeline, &datalake, &index, &metadata, CONTROL_DIR, download_book);
+        pipeline_run(&pipeline, steps, n_ids ? ids : NULL, n_ids);
+
+    } else if (strcmp(command, "sample") == 0) {
+        IdList sample = {ids, 0};
+        walk_dir(SAMPLE_DIR, collect_sample_id, &sample);
+        qsort(ids, sample.count, sizeof(int), compare_ints);
+        pipeline_init(&pipeline, &datalake, &index, &metadata, CONTROL_DIR, fetch_from_sample);
+        pipeline_run(&pipeline, 2 * (int)sample.count, ids, sample.count);
+
+    } else if (strcmp(command, "search") == 0) {
+        char query[1024] = "";
+        int phrase = 0;
+        for (; arg < argc; arg++) {
+            if (strcmp(argv[arg], "--phrase") == 0) {
+                phrase = 1;
+            } else {
+                if (query[0]) strncat(query, " ", sizeof(query) - strlen(query) - 1);
+                strncat(query, argv[arg], sizeof(query) - strlen(query) - 1);
+            }
+        }
+        cmd_search(&index, &metadata, query, phrase);
+
+    } else if (strcmp(command, "metadata") == 0) {
+        const char *author = NULL, *language = NULL;
+        int id = 0;
+        for (; arg + 1 < argc; arg += 2) {
+            if (strcmp(argv[arg], "--author") == 0) author = argv[arg + 1];
+            else if (strcmp(argv[arg], "--language") == 0) language = argv[arg + 1];
+            else if (strcmp(argv[arg], "--id") == 0) id = atoi(argv[arg + 1]);
+        }
+        cmd_metadata(&metadata, author, language, id);
+
+    } else {
+        usage();
+    }
+
+    disk_index_close(&index);
+    metadata_close(&metadata);
+    return 0;
 }

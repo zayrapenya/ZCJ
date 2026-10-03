@@ -40,8 +40,7 @@ void free_metadata(Metadata *meta);
 int metadata_open(MetadataStore *store, const char *db_path);
 void metadata_close(MetadataStore *store);
 
-/* With commit = 0 the row stays in an open transaction until metadata_commit(),
-   which is much faster for bulk inserts. */
+
 int metadata_insert(MetadataStore *store, int book_id, const Metadata *meta,
                     const char *path, int commit);
 int metadata_commit(MetadataStore *store);
