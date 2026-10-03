@@ -1,6 +1,6 @@
 CC      = gcc
 CFLAGS  = -std=c11 -O2 -Wall -Wextra -Wno-format-truncation -Isrc
-LDLIBS  =
+LDLIBS  = -lsqlite3
 
 SRC     = $(wildcard src/*.c)
 OBJ     = $(patsubst src/%.c,build/%.o,$(SRC))

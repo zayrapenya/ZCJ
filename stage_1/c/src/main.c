@@ -1,81 +1,100 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "book.h"
 #include "config.h"
-#include "datalake.h"
+#include "metadata.h"
 #include "util.h"
 
 static const int SAMPLE_IDS[] = {11, 84, 98, 1342, 1661};
 #define N_SAMPLE (sizeof(SAMPLE_IDS) / sizeof(SAMPLE_IDS[0]))
 
-static const char *check(int ok) { return ok ? "OK" : "FAIL"; }
+/* Reference values from the Python implementation */
+static const char *EXPECTED[N_SAMPLE][4] = {
+    {"Alice's Adventures in Wonderland", "Lewis Carroll", "June 27, 2008", "English"},
+    {"Frankenstein; or, the modern prometheus", "Mary Wollstonecraft Shelley", "October 1, 1993", "English"},
+    {"A Tale of Two Cities", "Charles Dickens", "January 1, 1994", "English"},
+    {"Pride and Prejudice", "Jane Austen", "June 1, 1998", "English"},
+    {"The Adventures of Sherlock Holmes", "Arthur Conan Doyle", "March 1, 1999", "English"},
+};
 
-/* Stores the sample in each layout, then reads every book back and checks
-   that it is identical to the original. */
-static int test_layout(DatalakeLayout layout, Book *books) {
-    char root[PATH_SIZE];
-    snprintf(root, sizeof(root), "%s/%s", DATALAKE_DIR, datalake_name(layout));
-    remove_tree(root);
-
-    Datalake lake;
-    datalake_init(&lake, layout, root);
-
-    time_t now = time(NULL);
-    double start = now_seconds();
-    for (size_t i = 0; i < N_SAMPLE; i++) {
-        datalake_save(&lake, SAMPLE_IDS[i], &books[i], now);
-    }
-    double write_ms = 1000 * (now_seconds() - start);
-
-    int same = 1;
-    start = now_seconds();
-    for (size_t i = 0; i < N_SAMPLE; i++) {
-        Book stored;
-        if (datalake_read(&lake, SAMPLE_IDS[i], &stored) != 0) { same = 0; continue; }
-        same &= strcmp(stored.header, books[i].header) == 0 &&
-                strcmp(stored.body, books[i].body) == 0;
-        free_book(&stored);
-    }
-    double read_ms = 1000 * (now_seconds() - start);
-
-    IdList ids;
-    datalake_book_ids(&lake, &ids);
-    int ids_ok = ids.count == N_SAMPLE;
-    for (size_t i = 0; ids_ok && i < N_SAMPLE; i++) ids_ok = ids.ids[i] == SAMPLE_IDS[i];
-    free_ids(&ids);
-
-    StorageStats stats = datalake_stats(&lake);
-    printf("  %-6s %8.1f %8.1f %6ld %6ld %10.2f   read %s, ids %s\n",
-           datalake_name(layout), write_ms, read_ms, stats.files, stats.dirs,
-           stats.bytes / 1e6, check(same), check(ids_ok));
-    return same && ids_ok;
+static int same(const char *a, const char *b) {
+    return a && b && strcmp(a, b) == 0;
 }
+
+static const char *check(int ok) { return ok ? "OK" : "FAIL"; }
 
 int main(void) {
     printf("Stage 1 - C implementation\n\n");
 
-    Book books[N_SAMPLE];
+    char db_path[256];
+    snprintf(db_path, sizeof(db_path), "%s/metadata.db", DATAMARTS_DIR);
+    remove(db_path);
+
+    MetadataStore store;
+    if (metadata_open(&store, db_path) != 0) {
+        printf("Could not open %s\n", db_path);
+        return 1;
+    }
+
+    int ok = 0, checks = 0;
     for (size_t i = 0; i < N_SAMPLE; i++) {
         char path[256];
         snprintf(path, sizeof(path), "%s/pg%d.txt", SAMPLE_DIR, SAMPLE_IDS[i]);
         char *text = read_file(path, NULL);
-        if (!text || split_book(text, &books[i]) != 0) {
+        Book book;
+        if (!text || split_book(text, &book) != 0) {
             printf("Could not read %s\n", path);
-            return 1;
+            free(text);
+            continue;
         }
+
+        Metadata meta;
+        parse_header(book.header, &meta);
+        int match = same(meta.title, EXPECTED[i][0]) && same(meta.author, EXPECTED[i][1]) &&
+                    same(meta.release_date, EXPECTED[i][2]) && same(meta.language, EXPECTED[i][3]);
+        ok += match;
+        checks++;
+        printf("  %-5d %-40.40s %-28s %-16s %s\n", SAMPLE_IDS[i], meta.title, meta.author,
+               meta.release_date, check(match));
+
+        char book_path[256];
+        snprintf(book_path, sizeof(book_path), "%s/books/%d/body.txt", DATALAKE_DIR, SAMPLE_IDS[i]);
+        metadata_insert(&store, SAMPLE_IDS[i], &meta, book_path, 1);
+
+        free_metadata(&meta);
+        free_book(&book);
         free(text);
     }
 
-    printf("  %-6s %8s %8s %6s %6s %10s\n", "layout", "write ms", "read ms", "files", "dirs", "MB");
-    int ok = 0;
-    for (int layout = LAYOUT_TIME; layout <= LAYOUT_RANGE; layout++) {
-        ok += test_layout((DatalakeLayout)layout, books);
-    }
-    printf("\n%d of 3 datalake layouts working correctly\n", ok);
+    long count = metadata_count(&store);
+    printf("\n  rows in table: %ld  %s\n", count, check(count == (long)N_SAMPLE));
+    ok += count == (long)N_SAMPLE;
+    checks++;
 
-    for (size_t i = 0; i < N_SAMPLE; i++) free_book(&books[i]);
-    return ok == 3 ? 0 : 1;
+    BookRows rows;
+    metadata_by_author(&store, "Austen", &rows);
+    int author_ok = rows.count == 1 && rows.rows[0].book_id == 1342;
+    printf("  by author \"Austen\": %zu book(s)  %s\n", rows.count, check(author_ok));
+    free_book_rows(&rows);
+    ok += author_ok;
+    checks++;
+
+    char *path = metadata_path_by_title(&store, "Pride and Prejudice");
+    int path_ok = same(path, "datalake/books/1342/body.txt");
+    printf("  path of \"Pride and Prejudice\": %s  %s\n", path ? path : "(none)", check(path_ok));
+    free(path);
+    ok += path_ok;
+    checks++;
+
+    metadata_by_language(&store, "English", &rows);
+    printf("  by language \"English\": %zu book(s)  %s\n", rows.count, check(rows.count == N_SAMPLE));
+    ok += rows.count == N_SAMPLE;
+    checks++;
+    free_book_rows(&rows);
+
+    metadata_close(&store);
+    printf("\n%d of %d checks match Python\n", ok, checks);
+    return ok == checks ? 0 : 1;
 }
