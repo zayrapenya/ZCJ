@@ -190,8 +190,11 @@ Control files are updated only after successful operations.
 From the `stage_1` directory:
 
 ```bash
-mvn clean package
+mvn clean compile
 ```
+
+All commands are run with `mvn exec:java` from the `stage_1` directory, so that Maven
+adds the SQLite and Gson dependencies to the classpath.
 
 ---
 
@@ -200,49 +203,49 @@ mvn clean package
 ### Process sample dataset
 
 ```bash
-java -cp target/classes Main sample
+mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="sample"
 ```
 
 ### Download books
 
 ```bash
-java -cp target/classes Main download 11 84 98 1342 1661
+mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="download 11 84 98 1342 1661"
 ```
 
 ### Index pending books
 
 ```bash
-java -cp target/classes Main index
+mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="index"
 ```
 
 ### Run the control pipeline
 
 ```bash
-java -cp target/classes Main run 10
+mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="run 10"
 ```
 
 ### Search
 
 ```bash
-java -cp target/classes Main search darcy
+mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="search darcy"
 ```
 
 AND search:
 
 ```bash
-java -cp target/classes Main search darcy love
+mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="search darcy love"
 ```
 
 Phrase search:
 
 ```bash
-java -cp target/classes Main phrase "mr darcy"
+mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="phrase mr darcy"
 ```
 
 ### Metadata
 
 ```bash
-java -cp target/classes Main metadata 1342
+mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="metadata 1342"
 ```
 
 ---
@@ -252,10 +255,7 @@ java -cp target/classes Main metadata 1342
 The Datalake and index can be selected from the command line.
 
 ```bash
-java -cp target/classes Main \
-  --datalake time \
-  --index monolithic \
-  sample
+mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="--datalake time --index monolithic sample"
 ```
 
 Available Datalakes:
@@ -318,9 +318,9 @@ The `sample_data/` directory is tracked so that the project can be tested reprod
 ```bash
 git clone https://github.com/zayrapenya/ZCJ.git
 cd ZCJ/stage_1
-mvn clean package
-java -cp target/classes Main sample
-java -cp target/classes Main search darcy
+mvn clean compile
+mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="sample"
+mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="search darcy"
 ```
 
 ---
