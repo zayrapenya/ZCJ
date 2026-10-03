@@ -285,6 +285,17 @@ The `benchmark` package contains four classes:
 * `IndexBenchmark.java` — compares the three inverted-index structures.
 * `MetadataBenchmark.java` — evaluates metadata operations with different dataset sizes.
 
+Run them from the `stage_1` directory (they read the books from `sample_data/`):
+
+```bash
+mvn -q exec:java -Dexec.mainClass=benchmark.DatalakeBenchmark
+mvn -q exec:java -Dexec.mainClass=benchmark.IndexBenchmark
+mvn -q exec:java -Dexec.mainClass=benchmark.MetadataBenchmark
+```
+
+The index benchmark takes a few minutes because the hierarchical structure writes
+thousands of small files.
+
 Benchmark results are generated as:
 
 ```text
