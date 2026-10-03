@@ -1,98 +1,123 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "book.h"
 #include "config.h"
 #include "disk_index.h"
+#include "search.h"
 #include "tokenizer.h"
 #include "util.h"
 
 static const int SAMPLE_IDS[] = {11, 84, 98, 1342, 1661};
 #define N_SAMPLE (sizeof(SAMPLE_IDS) / sizeof(SAMPLE_IDS[0]))
 
-/* Reference values from the Python implementation */
-#define EXPECTED_DARCY 432
-static const long EXPECTED_FILES[N_INDEX_KINDS] = {1, 16804, 1};
-static const long long EXPECTED_BYTES[N_INDEX_KINDS] = {3347317, 3001886, 0}; /* 0 = not compared */
+typedef enum { WORD, AND, PHRASE } QueryType;
 
-static const char *check(int ok) { return ok ? "OK" : "FAIL"; }
+typedef struct {
+    QueryType type;
+    const char *text;       /* AND queries: words separated by spaces */
+    size_t books;           /* expected results, from the Python version */
+    size_t hits;
+} Query;
 
-static size_t positions_in(const PostingList *list, int book_id) {
-    for (size_t i = 0; i < list->count; i++) {
-        if (list->items[i].book_id == book_id) return list->items[i].count;
-    }
-    return 0;
-}
+/* Same query workload as the benchmarks of every language */
+static const Query QUERIES[] = {
+    {WORD, "darcy", 1, 432},       {WORD, "monster", 2, 32},
+    {WORD, "alice", 2, 411},       {WORD, "holmes", 1, 462},
+    {WORD, "love", 5, 238},        {WORD, "the", 5, 24192},
+    {WORD, "revolution", 3, 12},   {WORD, "creature", 5, 98},
+    {WORD, "queen", 4, 90},        {WORD, "zzzz", 0, 0},
+    {AND, "darcy love", 1, 432},   {AND, "monster night", 2, 32},
+    {AND, "alice queen", 2, 411},  {AND, "holmes watson", 1, 462},
+    {PHRASE, "mr darcy", 1, 277},  {PHRASE, "sherlock holmes", 1, 97},
+    {PHRASE, "the white rabbit", 1, 21},
+    {PHRASE, "it was the best of times", 1, 1},
+};
+#define N_QUERIES (sizeof(QUERIES) / sizeof(QUERIES[0]))
 
-static int test_index(IndexKind kind, TokenList *books) {
+static const char *TYPE_NAMES[] = {"word", "and", "phrase"};
+
+/* Builds the index of the sample in datamarts/<kind> if it does not exist yet */
+static int open_sample_index(DiskIndex *index, IndexKind kind) {
     char datamarts[256];
     snprintf(datamarts, sizeof(datamarts), "%s/%s", DATAMARTS_DIR, index_kind_name(kind));
-    remove_tree(datamarts);
+    if (disk_index_open(index, kind, datamarts) != 0) return -1;
 
-    DiskIndex index;
-    if (disk_index_open(&index, kind, datamarts) != 0) {
-        printf("  %-13s could not open\n", index_kind_name(kind));
-        return 0;
-    }
-    double start = now_seconds();
-    for (size_t i = 0; i < N_SAMPLE; i++) {
-        disk_index_add_book(&index, SAMPLE_IDS[i], &books[i]);
-    }
-    disk_index_flush(&index);
-    double build_sec = now_seconds() - start;
-    disk_index_close(&index);
+    PostingList probe;
+    disk_index_lookup(index, "darcy", &probe);
+    int exists = probe.count > 0;
+    free_postings(&probe);
+    if (exists) return 0;
 
-    /* Reopen so the lookups read from disk */
-    disk_index_open(&index, kind, datamarts);
-    PostingList darcy, monster, missing;
-    start = now_seconds();
-    disk_index_lookup(&index, "darcy", &darcy);
-    disk_index_lookup(&index, "monster", &monster);
-    disk_index_lookup(&index, "zzzz", &missing);
-    double lookup_ms = 1000 * (now_seconds() - start);
-
-    int lookups_ok = positions_in(&darcy, 1342) == EXPECTED_DARCY && monster.count == 2 &&
-                     positions_in(&monster, 84) > 0 && positions_in(&monster, 98) > 0 &&
-                     missing.count == 0;
-    DiskUsage usage = disk_index_usage(&index);
-    int usage_ok = usage.files == EXPECTED_FILES[kind] &&
-                   (EXPECTED_BYTES[kind] == 0 || usage.bytes == EXPECTED_BYTES[kind]);
-
-    printf("  %-13s %8.3f %9.2f %7ld %10.2f   lookups %s, size %s\n", index_kind_name(kind),
-           build_sec, lookup_ms, usage.files, usage.bytes / 1e6, check(lookups_ok), check(usage_ok));
-
-    free_postings(&darcy);
-    free_postings(&monster);
-    free_postings(&missing);
-    disk_index_close(&index);
-    return lookups_ok && usage_ok;
-}
-
-int main(void) {
-    printf("Stage 1 - C implementation\n\n");
-
-    TokenList books[N_SAMPLE];
+    printf("  building %s index...\n", index_kind_name(kind));
     for (size_t i = 0; i < N_SAMPLE; i++) {
         char path[256];
         snprintf(path, sizeof(path), "%s/pg%d.txt", SAMPLE_DIR, SAMPLE_IDS[i]);
         char *text = read_file(path, NULL);
         Book book;
-        if (!text || split_book(text, &book) != 0) {
-            printf("Could not read %s\n", path);
-            return 1;
-        }
-        tokenize(book.body, &books[i]);
+        if (!text || split_book(text, &book) != 0) { free(text); return -1; }
+        TokenList tokens;
+        tokenize(book.body, &tokens);
+        disk_index_add_book(index, SAMPLE_IDS[i], &tokens);
+        free_tokens(&tokens);
         free_book(&book);
         free(text);
     }
+    return disk_index_flush(index);
+}
 
-    printf("  %-13s %8s %9s %7s %10s\n", "index", "build s", "lookup ms", "files", "MB");
-    int ok = 0;
-    for (int kind = 0; kind < N_INDEX_KINDS; kind++) {
-        ok += test_index((IndexKind)kind, books);
+static void run_query(DiskIndex *index, const Query *query, PostingList *out) {
+    if (query->type == WORD) {
+        search_word(index, query->text, out);
+    } else if (query->type == PHRASE) {
+        search_phrase(index, query->text, out);
+    } else {
+        char copy[256];
+        const char *words[16];
+        size_t n = 0;
+        snprintf(copy, sizeof(copy), "%s", query->text);
+        for (char *w = strtok(copy, " "); w && n < 16; w = strtok(NULL, " ")) words[n++] = w;
+        search_and(index, words, n, out);
     }
-    printf("\n%d of %d index structures match Python\n", ok, N_INDEX_KINDS);
+}
 
-    for (size_t i = 0; i < N_SAMPLE; i++) free_tokens(&books[i]);
-    return ok == N_INDEX_KINDS ? 0 : 1;
+int main(void) {
+    printf("Stage 1 - C implementation\n\n");
+
+    int total_ok = 0;
+    for (int kind = 0; kind < N_INDEX_KINDS; kind++) {
+        DiskIndex index;
+        if (open_sample_index(&index, (IndexKind)kind) != 0) {
+            printf("  %s: could not open the index\n", index_kind_name((IndexKind)kind));
+            continue;
+        }
+
+        int ok = 0;
+        double start = now_seconds();
+        for (size_t q = 0; q < N_QUERIES; q++) {
+            PostingList result;
+            run_query(&index, &QUERIES[q], &result);
+
+            size_t hits = 0;
+            for (size_t b = 0; b < result.count; b++) hits += result.items[b].count;
+            int same = result.count == QUERIES[q].books && hits == QUERIES[q].hits;
+            ok += same;
+            if (!same) {
+                printf("  %s: %s \"%s\" -> %zu books, %zu hits (expected %zu, %zu)\n",
+                       index_kind_name((IndexKind)kind), TYPE_NAMES[QUERIES[q].type],
+                       QUERIES[q].text, result.count, hits, QUERIES[q].books, QUERIES[q].hits);
+            }
+            free_postings(&result);
+        }
+        double elapsed_ms = 1000 * (now_seconds() - start);
+
+        printf("  %-13s %2d of %zu queries match Python  (%.2f ms)\n",
+               index_kind_name((IndexKind)kind), ok, N_QUERIES, elapsed_ms);
+        total_ok += ok == (int)N_QUERIES;
+        disk_index_close(&index);
+    }
+
+    printf("\n%d of %d index structures answer every query like Python\n", total_ok, N_INDEX_KINDS);
+    return total_ok == N_INDEX_KINDS ? 0 : 1;
 }
