@@ -3,6 +3,13 @@
 /datamarts/
 /control/
 
+# Old generated data from before the Java code moved to stage_1/java
+/stage_1/datalake/
+/stage_1/datamarts/
+/stage_1/control/
+/stage_1/target/
+/stage_1/java_*.csv
+
 # IDE and OS files
 .idea/
 .vscode/
