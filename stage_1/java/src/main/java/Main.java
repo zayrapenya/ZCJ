@@ -21,14 +21,14 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 /*
- * Entry point of the Java implementation (run from the stage_1 folder).
+ * Entry point of the Java implementation (run from the stage_1/java folder).
  *
  * Options (before the command):
  *   --datalake time|book|range                 (default: time)
  *   --index monolithic|hierarchical|sqlite      (default: monolithic)
  *
  * Commands:
- *   sample                     ingest the books of sample_data/ through the control layer
+ *   sample                     ingest the books of ../sample_data/ through the control layer
  *   download <id> [<id> ...]   download books from Project Gutenberg into the datalake
  *   index                      index every downloaded book that is not indexed yet
  *   run <steps> [<id> ...]     run the control layer N steps (random ids if none given)
@@ -41,7 +41,7 @@ public class Main {
     private static final Path DATALAKE = Path.of("datalake");
     private static final Path DATAMARTS = Path.of("datamarts");
     private static final Path CONTROL = Path.of("control");
-    private static final Path SAMPLE_DATA = Path.of("sample_data");
+    private static final Path SAMPLE_DATA = Path.of("..", "sample_data");
 
     public static void main(String[] args) throws Exception {
 
@@ -217,7 +217,7 @@ public class Main {
     private static void printUsage() {
         System.out.println("""
                 Usage: [--datalake time|book|range] [--index monolithic|hierarchical|sqlite] <command>
-                  sample                     ingest the books of sample_data/
+                  sample                     ingest the books of ../sample_data/
                   download <id> [<id> ...]   download books from Project Gutenberg
                   index                      index every pending book
                   run <steps> [<id> ...]     run the control layer N steps

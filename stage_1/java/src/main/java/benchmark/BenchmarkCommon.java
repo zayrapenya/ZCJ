@@ -88,7 +88,7 @@ public final class BenchmarkCommon {
 
     public static Path sampleDataRoot() {
 
-        Path root = Path.of("sample_data");
+        Path root = Path.of("..", "sample_data");
 
         if (!Files.exists(root)) {
             throw new IllegalStateException(

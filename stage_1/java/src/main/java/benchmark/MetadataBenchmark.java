@@ -108,7 +108,7 @@ public class MetadataBenchmark {
                             i % headers.size()
                     ),
                     Path.of(
-                            "sample_data",
+                            "..", "sample_data",
                             sourceId
                                     + ".body.txt"
                     )
