@@ -1,0 +1,9 @@
+/target/
+/datalake/
+/datamarts/
+/control/
+.idea/
+desktop.ini
+java_datalake.csv
+java_index.csv
+java_metadata.csv

@@ -8,13 +8,19 @@ public class BookProcessor {
     private static final String END_MARKER =
             "*** END OF THE PROJECT GUTENBERG EBOOK";
 
+    private BookProcessor() {
+    }
+
     public static String extractHeader(String book) {
 
-        int start = book.indexOf(START_MARKER);
+        book = book.replace("\r\n", "\n");
 
-        if (start == -1) {
+        int start = book.indexOf(START_MARKER);
+        int end = book.indexOf(END_MARKER);
+
+        if (start == -1 || end == -1) {
             throw new IllegalArgumentException(
-                    "No se ha encontrado el inicio del libro"
+                    "Marcadores de Gutenberg no encontrados"
             );
         }
 
@@ -23,23 +29,25 @@ public class BookProcessor {
 
     public static String extractBody(String book) {
 
+        book = book.replace("\r\n", "\n");
+
         int start = book.indexOf(START_MARKER);
         int end = book.indexOf(END_MARKER);
 
-        if (start == -1) {
+        if (start == -1 || end == -1) {
             throw new IllegalArgumentException(
-                    "No se ha encontrado el inicio del libro"
+                    "Marcadores de Gutenberg no encontrados"
             );
         }
 
-        if (end == -1) {
+        int bodyStart = book.indexOf("\n", start);
+
+        if (bodyStart == -1 || bodyStart >= end) {
             throw new IllegalArgumentException(
-                    "No se ha encontrado el final del libro"
+                    "No se pudo localizar correctamente el inicio del body"
             );
         }
 
-        int bodyStart = start + START_MARKER.length();
-
-        return book.substring(bodyStart, end).trim();
+        return book.substring(bodyStart + 1, end).trim();
     }
 }
