@@ -171,6 +171,16 @@ benchmarks/results/c_metadata.csv
 ```
 
 with the common format `language,benchmark,structure,n_books,metric,value`.
+| Benchmark | Structures | Metrics |
+|-----------|-----------|---------|
+| datalake  | time, book, range | write throughput, lookup time, incremental detection, recovery (duplicated/lost books), files/dirs/bytes |
+| index     | monolithic, hierarchical, sqlite | indexing time, peak RAM, query time (cold/avg), update one book, disk usage |
+| metadata  | sqlite | insert rate, query by author / title / id |
+
+Query workload used by the index benchmark (must be the same in every language):
+words `darcy, monster, alice, holmes, love, the, revolution, creature, queen, zzzz`;
+AND `darcy+love, monster+night, alice+queen, holmes+watson`;
+phrases `mr darcy, sherlock holmes, the white rabbit, it was the best of times`.
 
 Peak memory is measured by counting every `malloc`/`free` of the program
 (`memtrack.c`), which is the equivalent of Python's `tracemalloc`.
