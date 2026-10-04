@@ -43,7 +43,7 @@ Each implementation includes:
 ```text
 stage_1/
 ├── sample_data/        # 5 Gutenberg books (11, 84, 98, 1342, 1661) for offline tests
-├── pom.xml, src/       # Java implementation  → stage_1/README.md
+├── java/               # Java implementation   → stage_1/java/README.md
 ├── python/             # Python implementation → stage_1/python/README.md
 └── c/                  # C implementation      → stage_1/c/README.md
 ```
@@ -58,7 +58,7 @@ Detailed setup and all the commands are in the README of each implementation.
 | Language | Documentation | Ingest the sample dataset and search |
 |----------|---------------|--------------------------------------|
 | Python 3.10+ | [stage_1/python/README.md](stage_1/python/README.md) | `cd stage_1/python` → `pip install -r requirements.txt` → `python main.py sample` → `python main.py search "mr darcy" --phrase` |
-| Java 17+ (Maven) | [stage_1/README.md](stage_1/README.md) | `cd stage_1` → `mvn clean compile` → `mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="sample"` → `mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="phrase mr darcy"` |
+| Java 17+ (Maven) | [stage_1/java/README.md](stage_1/java/README.md) | `cd stage_1/java` → `mvn clean compile` → `mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="sample"` → `mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="phrase mr darcy"` |
 | C11 (gcc, SQLite, libcurl) | [stage_1/c/README.md](stage_1/c/README.md) | `cd stage_1/c` → `make` → `./build/search_engine sample` → `./build/search_engine search "mr darcy" --phrase` |
 
 The three implementations return the same result: the phrase *mr darcy* appears 277 times in

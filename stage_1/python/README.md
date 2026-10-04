@@ -1,7 +1,7 @@
 # Stage 1 – Data layer (Python implementation)
 
 Python version of the Stage 1 search engine data layer. It follows the same
-preprocessing rules as the Java implementation (`stage_1/src`) so both produce
+preprocessing rules as the Java implementation (`stage_1/java`) so both produce
 equivalent datalakes and inverted indexes and can be benchmarked against each other.
 
 ## Structure

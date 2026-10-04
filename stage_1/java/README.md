@@ -33,47 +33,48 @@ mvn -version
 
 ```text
 stage_1/
-├── pom.xml
-├── README.md
-├── sample_data/
+├── sample_data/          # shared by the Java, Python and C implementations
 │   ├── pg11.txt
 │   ├── pg84.txt
 │   ├── pg98.txt
 │   ├── pg1342.txt
 │   └── pg1661.txt
 │
-└── src/main/java/
-    ├── Main.java
-    │
-    ├── control/
-    │   ├── ControlManager.java
-    │   └── Pipeline.java
-    │
-    ├── datalake/
-    │   ├── BookDownloader.java
-    │   ├── BookDatalake.java
-    │   ├── BookPaths.java
-    │   ├── BookProcessor.java
-    │   ├── Datalake.java
-    │   ├── DateTimeDatalake.java
-    │   └── RangeDatalake.java
-    │
-    ├── index/
-    │   ├── HierarchicalIndex.java
-    │   ├── IndexStore.java
-    │   ├── MonolithicIndex.java
-    │   ├── SQLiteIndex.java
-    │   ├── SearchEngine.java
-    │   └── Tokenizer.java
-    │
-    ├── metadata/
-    │   └── MetadataStore.java
-    │
-    └── benchmark/
-        ├── BenchmarkCommon.java
-        ├── DatalakeBenchmark.java
-        ├── IndexBenchmark.java
-        └── MetadataBenchmark.java
+└── java/
+    ├── pom.xml
+    ├── README.md
+    └── src/main/java/
+        ├── Main.java
+        │
+        ├── control/
+        │   ├── ControlManager.java
+        │   └── Pipeline.java
+        │
+        ├── datalake/
+        │   ├── BookDownloader.java
+        │   ├── BookDatalake.java
+        │   ├── BookPaths.java
+        │   ├── BookProcessor.java
+        │   ├── Datalake.java
+        │   ├── DateTimeDatalake.java
+        │   └── RangeDatalake.java
+        │
+        ├── index/
+        │   ├── HierarchicalIndex.java
+        │   ├── IndexStore.java
+        │   ├── MonolithicIndex.java
+        │   ├── SQLiteIndex.java
+        │   ├── SearchEngine.java
+        │   └── Tokenizer.java
+        │
+        ├── metadata/
+        │   └── MetadataStore.java
+        │
+        └── benchmark/
+            ├── BenchmarkCommon.java
+            ├── DatalakeBenchmark.java
+            ├── IndexBenchmark.java
+            └── MetadataBenchmark.java
 ```
 
 ---
@@ -88,10 +89,10 @@ The included sample dataset contains:
 11, 84, 98, 1342, 1661
 ```
 
-The files are located in:
+The files are located in the folder shared by all the implementations:
 
 ```text
-sample_data/
+stage_1/sample_data/
 ```
 
 ---
@@ -187,13 +188,13 @@ Control files are updated only after successful operations.
 
 ## Compilation
 
-From the `stage_1` directory:
+From the `stage_1/java` directory:
 
 ```bash
 mvn clean compile
 ```
 
-All commands are run with `mvn exec:java` from the `stage_1` directory, so that Maven
+All commands are run with `mvn exec:java` from the `stage_1/java` directory, so that Maven
 adds the SQLite and Gson dependencies to the classpath.
 
 ---
@@ -285,7 +286,7 @@ The `benchmark` package contains four classes:
 * `IndexBenchmark.java` — compares the three inverted-index structures.
 * `MetadataBenchmark.java` — evaluates metadata operations with different dataset sizes.
 
-Run them from the `stage_1` directory (they read the books from `sample_data/`):
+Run them from the `stage_1/java` directory (they read the books from `../sample_data/`):
 
 ```bash
 mvn -q exec:java -Dexec.mainClass=benchmark.DatalakeBenchmark
@@ -320,7 +321,7 @@ java_index.csv
 java_metadata.csv
 ```
 
-The `sample_data/` directory is tracked so that the project can be tested reproducibly.
+The `stage_1/sample_data/` directory is tracked so that the project can be tested reproducibly.
 
 ---
 
@@ -328,7 +329,7 @@ The `sample_data/` directory is tracked so that the project can be tested reprod
 
 ```bash
 git clone https://github.com/zayrapenya/ZCJ.git
-cd ZCJ/stage_1
+cd ZCJ/stage_1/java
 mvn clean compile
 mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="sample"
 mvn -q exec:java -Dexec.mainClass=Main -Dexec.args="search darcy"
